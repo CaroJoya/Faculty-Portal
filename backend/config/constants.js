@@ -1,0 +1,5 @@
+const CONVERSION_HOURS_PER_LEAVE = Number(process.env.CONVERSION_HOURS_PER_LEAVE || 5);
+
+module.exports = {
+  CONVERSION_HOURS_PER_LEAVE
+};
