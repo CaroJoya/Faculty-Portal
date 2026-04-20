@@ -1,85 +1,80 @@
-import { useEffect, useState } from "react";
-import api from "../api/axios";
-import ChangePasswordModal from "../components/ChangePasswordModal";
-import OverworkTracker from "../components/OverworkTracker";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function Profile() {
-  const [me, setMe] = useState(null);
-  const [summary, setSummary] = useState(null);
-  const [openPwd, setOpenPwd] = useState(false);
-
-  const role = JSON.parse(localStorage.getItem("user") || "{}")?.role;
+  const token = localStorage.getItem("token");
+  const [user, setUser] = useState(null);
+  const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      api.get("/me"),
-      api.get("/overwork/my-summary").catch(() => ({ data: null }))
-    ]).then(([m, s]) => {
-      setMe(m.data);
-      setSummary(s.data);
-    });
+    axios.get(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => setUser(r.data));
   }, []);
 
-  if (!me) return <div>Loading...</div>;
+  const changePassword = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`${API}/change-password`, pw, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMsg(res.data.message || "Password updated");
+      setPw({ currentPassword: "", newPassword: "" });
+    } catch (e2) {
+      setMsg(e2?.response?.data?.message || "Failed to change password");
+    }
+  };
 
-  const medicalUsed = (me.medical_leave_total || 0) - (me.medical_leave_left || 0);
-  const casualUsed = (me.casual_leave_total || 0) - (me.casual_leave_left || 0);
-  const earnedUsed = (me.earned_leave_total || 0) - (me.earned_leave_left || 0);
+  if (!user) return <div className="p-4">Loading...</div>;
+
+  const bal = [
+    ["Medical", user.medical_leave_left, user.medical_leave_total],
+    ["Casual", user.casual_leave_left, user.casual_leave_total],
+    ["Earned", user.earned_leave_left, user.earned_leave_total]
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-2xl p-5 shadow">
-        <h2 className="text-2xl font-bold mb-3">My Profile</h2>
-        <div className="grid md:grid-cols-2 gap-2 text-sm">
-          <p><b>Name:</b> {me.full_name}</p>
-          <p><b>Email:</b> {me.email || "-"}</p>
-          <p><b>Username:</b> {me.username}</p>
-          <p><b>Department:</b> {me.department || "-"}</p>
-          <p><b>Designation:</b> {me.designation || me.role || "-"}</p>
-          <p><b>Date of Joining:</b> {me.date_of_joining || "-"}</p>
+    <div className="p-4 max-w-3xl mx-auto space-y-4">
+      <h1 className="text-xl font-semibold">Profile</h1>
+
+      <div className="bg-white p-4 rounded shadow space-y-1 text-sm">
+        <p><b>Name:</b> {user.full_name}</p>
+        <p><b>Email:</b> {user.email}</p>
+        <p><b>Department:</b> {user.department}</p>
+        <p><b>Designation:</b> {user.designation}</p>
+        <p><b>Account Created:</b> {user.created_at}</p>
+      </div>
+
+      {/* Overwork section removed from Profile as requested */}
+
+      <div className="bg-white p-4 rounded shadow">
+        <h2 className="font-semibold mb-3">Leave Balances</h2>
+        <div className="space-y-3">
+          {bal.map(([label, left, total]) => {
+            const pct = total ? Math.max(0, Math.min(100, (left / total) * 100)) : 0;
+            return (
+              <div key={label}>
+                <div className="text-sm mb-1">{label}: {left} / {total}</div>
+                <div className="w-full bg-gray-200 rounded h-2">
+                  <div className="bg-blue-500 h-2 rounded" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <button onClick={() => setOpenPwd(true)} className="mt-4 px-4 py-2 rounded-xl bg-brand-600 text-white">
-          Change Password
-        </button>
       </div>
 
-      <div className="bg-white rounded-2xl p-5 shadow space-y-3">
-        <h3 className="text-lg font-bold">Leave Balances</h3>
-        <BalanceBar label="Medical" used={medicalUsed} total={me.medical_leave_total || 0} color="bg-rose-500" />
-        <BalanceBar label="Casual" used={casualUsed} total={me.casual_leave_total || 0} color="bg-blue-500" />
-        <BalanceBar label="Earned" used={earnedUsed} total={me.earned_leave_total || 0} color="bg-emerald-500" />
-      </div>
-
-      {summary && (
-        <div className="bg-white rounded-2xl p-5 shadow">
-          <h3 className="text-lg font-bold mb-2">Overwork Summary</h3>
-          <div className="grid md:grid-cols-3 gap-3 text-sm">
-            <Stat t="Pending Hours" v={summary.pending_hours} />
-            <Stat t="Converted Hours" v={summary.converted_hours} />
-            <Stat t="Earned Leaves From Overwork" v={summary.earned_leaves_from_overwork} />
-          </div>
-        </div>
-      )}
-
-      {["faculty", "hod", "registry", "officestaff"].includes(role) && <OverworkTracker />}
-
-      <ChangePasswordModal open={openPwd} onClose={() => setOpenPwd(false)} />
-    </div>
-  );
-}
-
-function Stat({ t, v }) {
-  return <div className="bg-slate-50 rounded-xl p-3"><p className="text-slate-500">{t}</p><p className="text-xl font-bold">{v}</p></div>;
-}
-
-function BalanceBar({ label, used, total, color }) {
-  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  return (
-    <div>
-      <div className="flex justify-between text-sm"><span>{label}</span><span>{used}/{total}</span></div>
-      <div className="w-full bg-slate-200 h-3 rounded-full">
-        <div className={`${color} h-3 rounded-full`} style={{ width: `${pct}%` }} />
-      </div>
+      <form onSubmit={changePassword} className="bg-white p-4 rounded shadow space-y-2">
+        <h2 className="font-semibold">Change Password</h2>
+        <input type="password" placeholder="Current Password" className="border rounded px-3 py-2 w-full"
+          value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
+        <input type="password" placeholder="New Password" className="border rounded px-3 py-2 w-full"
+          value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
+        <button className="bg-blue-600 text-white px-4 py-2 rounded">Update Password</button>
+        {msg && <p className="text-sm">{msg}</p>}
+      </form>
     </div>
   );
 }

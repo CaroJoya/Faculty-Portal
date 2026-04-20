@@ -13,6 +13,20 @@ if (!fs.existsSync(dbDir)) {
 
 const db = new Database(dbPath);
 console.log("Using DB file:", dbPath);
+
+function hasColumn(table, column) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  return cols.some(c => c.name === column);
+}
+
+function tableExists(table) {
+  const row = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type='table' AND name=?
+  `).get(table);
+  return !!row;
+}
+
 function createTables() {
   db.pragma("foreign_keys = ON");
 
@@ -80,34 +94,45 @@ function createTables() {
     )
   `).run();
 
-  // extra_work_days
+  // extra_work_days (existing legacy structure)
   db.prepare(`
     CREATE TABLE IF NOT EXISTS extra_work_days (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_username TEXT,
       work_date DATE NOT NULL,
-      reason TEXT NOT NULL,
+      reason TEXT,
       work_type TEXT DEFAULT 'holiday',
       hours_worked REAL DEFAULT 8.0,
+      hours REAL,
+      attachment_path TEXT,
       status TEXT DEFAULT 'pending',
       approved_by TEXT,
       approved_at DATETIME,
+      approver_username TEXT,
+      approver_comments TEXT,
       comments TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_username) REFERENCES users(username)
     )
   `).run();
 
-  // leave_conversions
+  // leave_conversions (existing legacy structure)
   db.prepare(`
     CREATE TABLE IF NOT EXISTS leave_conversions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       extra_work_day_id INTEGER,
       leave_request_id INTEGER,
+      user_username TEXT,
+      extra_work_id INTEGER,
+      hours_used REAL,
+      earned_days REAL,
       status TEXT DEFAULT 'pending',
       approved_by TEXT,
       approved_at DATETIME,
+      approver_username TEXT,
+      approver_comments TEXT,
       comments TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (extra_work_day_id) REFERENCES extra_work_days(id),
       FOREIGN KEY (leave_request_id) REFERENCES leave_requests(id)
     )
@@ -131,11 +156,12 @@ function createTables() {
       date DATE NOT NULL,
       status TEXT DEFAULT 'present',
       remarks TEXT,
+      marked_by TEXT,
       FOREIGN KEY (user_username) REFERENCES users(username)
     )
   `).run();
 
-  // vacation_periods
+  // legacy vacation_periods (kept for compatibility; not removed abruptly)
   db.prepare(`
     CREATE TABLE IF NOT EXISTS vacation_periods (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +171,129 @@ function createTables() {
       is_active BOOLEAN DEFAULT 1
     )
   `).run();
+
+  // new summer/winter periods
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS summer_winter_vacation (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vacation_type TEXT NOT NULL, -- Summer Vacation / Winter Vacation
+      year INTEGER NOT NULL,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      total_days INTEGER DEFAULT 40,
+      paid_leave_quota REAL NOT NULL, -- 27 (Summer), 21 (Winter)
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  // vacation calculations
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS faculty_vacation_calculation (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      faculty_id TEXT NOT NULL,
+      period_id INTEGER NOT NULL,
+      vacation_type TEXT NOT NULL,
+      quota_days REAL NOT NULL,
+      used_days REAL NOT NULL,
+      remaining_days REAL NOT NULL,
+      earned_leaves REAL NOT NULL,
+      calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+}
+
+function runSafeMigrations() {
+  // leave_requests new columns
+  if (!hasColumn("leave_requests", "duration_days")) {
+    db.prepare(`ALTER TABLE leave_requests ADD COLUMN duration_days REAL`).run();
+    console.log("Migration: added leave_requests.duration_days");
+  }
+  if (!hasColumn("leave_requests", "letter_path")) {
+    db.prepare(`ALTER TABLE leave_requests ADD COLUMN letter_path TEXT`).run();
+    console.log("Migration: added leave_requests.letter_path");
+  }
+
+  // ensure attendance has marked_by
+  if (!hasColumn("attendance", "marked_by")) {
+    db.prepare(`ALTER TABLE attendance ADD COLUMN marked_by TEXT`).run();
+    console.log("Migration: added attendance.marked_by");
+  }
+
+  // extra_work_days compatibility columns
+  if (!hasColumn("extra_work_days", "hours")) {
+    db.prepare(`ALTER TABLE extra_work_days ADD COLUMN hours REAL`).run();
+    console.log("Migration: added extra_work_days.hours");
+  }
+  if (!hasColumn("extra_work_days", "attachment_path")) {
+    db.prepare(`ALTER TABLE extra_work_days ADD COLUMN attachment_path TEXT`).run();
+    console.log("Migration: added extra_work_days.attachment_path");
+  }
+  if (!hasColumn("extra_work_days", "approver_username")) {
+    db.prepare(`ALTER TABLE extra_work_days ADD COLUMN approver_username TEXT`).run();
+    console.log("Migration: added extra_work_days.approver_username");
+  }
+  if (!hasColumn("extra_work_days", "approver_comments")) {
+    db.prepare(`ALTER TABLE extra_work_days ADD COLUMN approver_comments TEXT`).run();
+    console.log("Migration: added extra_work_days.approver_comments");
+  }
+
+  // leave_conversions compatibility columns
+  if (!hasColumn("leave_conversions", "user_username")) {
+    db.prepare(`ALTER TABLE leave_conversions ADD COLUMN user_username TEXT`).run();
+    console.log("Migration: added leave_conversions.user_username");
+  }
+  if (!hasColumn("leave_conversions", "hours_used")) {
+    db.prepare(`ALTER TABLE leave_conversions ADD COLUMN hours_used REAL`).run();
+    console.log("Migration: added leave_conversions.hours_used");
+  }
+  if (!hasColumn("leave_conversions", "earned_days")) {
+    db.prepare(`ALTER TABLE leave_conversions ADD COLUMN earned_days REAL`).run();
+    console.log("Migration: added leave_conversions.earned_days");
+  }
+  if (!hasColumn("leave_conversions", "approver_username")) {
+    db.prepare(`ALTER TABLE leave_conversions ADD COLUMN approver_username TEXT`).run();
+    console.log("Migration: added leave_conversions.approver_username");
+  }
+  if (!hasColumn("leave_conversions", "approver_comments")) {
+    db.prepare(`ALTER TABLE leave_conversions ADD COLUMN approver_comments TEXT`).run();
+    console.log("Migration: added leave_conversions.approver_comments");
+  }
+
+  // ensure new tables exist (for older DBs)
+  if (!tableExists("summer_winter_vacation")) {
+    db.prepare(`
+      CREATE TABLE summer_winter_vacation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vacation_type TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        total_days INTEGER DEFAULT 40,
+        paid_leave_quota REAL NOT NULL,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    console.log("Migration: created summer_winter_vacation");
+  }
+
+  if (!tableExists("faculty_vacation_calculation")) {
+    db.prepare(`
+      CREATE TABLE faculty_vacation_calculation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        faculty_id TEXT NOT NULL,
+        period_id INTEGER NOT NULL,
+        vacation_type TEXT NOT NULL,
+        quota_days REAL NOT NULL,
+        used_days REAL NOT NULL,
+        remaining_days REAL NOT NULL,
+        earned_leaves REAL NOT NULL,
+        calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    console.log("Migration: created faculty_vacation_calculation");
+  }
 }
 
 function seedDefaultUsers() {
@@ -203,6 +352,7 @@ function seedDefaultUsers() {
 function initDatabase() {
   try {
     createTables();
+    runSafeMigrations(); // IMPORTANT: safe permanent schema updates
     seedDefaultUsers();
 
     const totalUsers = db.prepare("SELECT COUNT(*) as c FROM users").get().c;

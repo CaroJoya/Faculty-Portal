@@ -1,20 +1,8 @@
 const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
 
 const router = express.Router();
-
-const uploadDir = path.join(__dirname, "../uploads/attendance");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
-});
-const upload = multer({ storage });
 
 function ensureHeadClerk(req, res) {
   const user = db.prepare("SELECT username, role FROM users WHERE username = ?").get(req.user.username);
@@ -125,29 +113,9 @@ router.post("/headclerk/attendance/mark", authenticateToken, authorizeRoles("hea
   }
 });
 
-// 3) POST /api/headclerk/attendance/upload
-router.post("/headclerk/attendance/upload", authenticateToken, authorizeRoles("headclerk"), upload.single("file"), (req, res) => {
-  try {
-    const hc = ensureHeadClerk(req, res);
-    if (!hc) return;
+// NOTE: Upload attendance endpoint removed as requested.
 
-    const { month, file_type } = req.body;
-    if (!month || !file_type) return res.status(400).json({ message: "month and file_type are required" });
-
-    return res.json({
-      message: "Attendance file uploaded (parser integration pending)",
-      file: req.file ? req.file.filename : null,
-      month,
-      file_type,
-      processed_records: 0
-    });
-  } catch (e) {
-    console.error("HEADCLERK attendance/upload error:", e);
-    return res.status(500).json({ message: "Internal Server Error" });
-  }
-});
-
-// 4) GET /api/headclerk/vacation/periods
+// 3) GET /api/headclerk/vacation/periods (legacy compatibility)
 router.get("/headclerk/vacation/periods", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);
@@ -167,70 +135,7 @@ router.get("/headclerk/vacation/periods", authenticateToken, authorizeRoles("hea
   }
 });
 
-// 5) POST /api/headclerk/vacation/set-period
-router.post("/headclerk/vacation/set-period", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
-  try {
-    const hc = ensureHeadClerk(req, res);
-    if (!hc) return;
-
-    const { period_name, start_date, end_date } = req.body;
-    if (!period_name || !start_date || !end_date) {
-      return res.status(400).json({ message: "period_name, start_date, end_date are required" });
-    }
-
-    const tx = db.transaction(() => {
-      db.prepare("UPDATE vacation_periods SET is_active = 0 WHERE is_active = 1").run();
-
-      const ins = db.prepare(`
-        INSERT INTO vacation_periods (period_name, start_date, end_date, is_active, created_by)
-        VALUES (?, ?, ?, 1, ?)
-      `).run(period_name, start_date, end_date, req.user.username);
-
-      const pid = ins.lastInsertRowid;
-
-      const faculty = db.prepare("SELECT username FROM users WHERE role = 'faculty'").all();
-      const insertUsage = db.prepare(`
-        INSERT INTO vacation_usage (faculty_id, vacation_period_id, vacation_days_used, vacation_days_remaining)
-        VALUES (?, ?, 0, 7)
-      `);
-
-      for (const f of faculty) insertUsage.run(f.username, pid);
-    });
-
-    tx();
-    return res.json({ message: "Vacation period set successfully" });
-  } catch (e) {
-    console.error("HEADCLERK vacation/set-period error:", e);
-    return res.status(500).json({ message: "Internal Server Error" });
-  }
-});
-
-// 6) GET /api/headclerk/vacation/faculty-status
-router.get("/headclerk/vacation/faculty-status", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
-  try {
-    const hc = ensureHeadClerk(req, res);
-    if (!hc) return;
-
-    const rows = db.prepare(`
-      SELECT
-        u.username, u.full_name, u.department,
-        COALESCE(vu.vacation_days_used, 0) AS vacation_days_used,
-        COALESCE(vu.vacation_days_remaining, 7) AS vacation_days_remaining
-      FROM users u
-      LEFT JOIN vacation_usage vu ON vu.faculty_id = u.username
-      LEFT JOIN vacation_periods vp ON vp.id = vu.vacation_period_id AND vp.is_active = 1
-      WHERE u.role = 'faculty'
-      ORDER BY u.full_name
-    `).all();
-
-    return res.json(rows);
-  } catch (e) {
-    console.error("HEADCLERK vacation/faculty-status error:", e);
-    return res.status(500).json({ message: "Internal Server Error" });
-  }
-});
-
-// 7) GET /api/headclerk/summer-winter/current
+// 4) GET /api/headclerk/summer-winter/current
 router.get("/headclerk/summer-winter/current", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);
@@ -255,39 +160,131 @@ router.get("/headclerk/summer-winter/current", authenticateToken, authorizeRoles
   }
 });
 
-// 8) POST /api/headclerk/summer-winter/set
+// 5) POST /api/headclerk/summer-winter/set
 router.post("/headclerk/summer-winter/set", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);
     if (!hc) return;
 
-    const { vacation_type, year, start_date, end_date, paid_leave_quota } = req.body;
-    if (!vacation_type || !year || !start_date || !end_date || paid_leave_quota == null) {
-      return res.status(400).json({ message: "vacation_type, year, start_date, end_date, paid_leave_quota are required" });
+    const { vacation_type, year, start_date, end_date } = req.body;
+    if (!vacation_type || !year || !start_date || !end_date) {
+      return res.status(400).json({ message: "vacation_type, year, start_date, end_date are required" });
+    }
+
+    const normalizedType = String(vacation_type).trim();
+    if (!["Summer Vacation", "Winter Vacation"].includes(normalizedType)) {
+      return res.status(400).json({ message: "vacation_type must be Summer Vacation or Winter Vacation" });
     }
 
     const totalDays = db.prepare(`SELECT (julianday(?) - julianday(?) + 1) AS d`).get(end_date, start_date).d;
     if (Number(totalDays) !== 40) return res.status(400).json({ message: "Total days must be exactly 40" });
 
+    // Fixed quotas as per requirement
+    const paid_leave_quota = normalizedType === "Summer Vacation" ? 27 : 21;
+
     db.prepare(`
       UPDATE summer_winter_vacation
       SET is_active = 0
       WHERE vacation_type = ?
-    `).run(vacation_type);
+    `).run(normalizedType);
 
     db.prepare(`
       INSERT INTO summer_winter_vacation (vacation_type, year, start_date, end_date, total_days, paid_leave_quota, is_active)
       VALUES (?, ?, ?, ?, 40, ?, 1)
-    `).run(vacation_type, year, start_date, end_date, Number(paid_leave_quota));
+    `).run(normalizedType, year, start_date, end_date, paid_leave_quota);
 
-    return res.json({ message: "Summer/Winter vacation period saved successfully" });
+    return res.json({
+      message: "Summer/Winter vacation period saved successfully",
+      vacation_type: normalizedType,
+      paid_leave_quota
+    });
   } catch (e) {
     console.error("HEADCLERK summer-winter/set error:", e);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// 9) GET /api/headclerk/vacation/calendar
+// 6) GET /api/headclerk/vacation/faculty-status (all eligible employees + summer/winter usage)
+router.get("/headclerk/vacation/faculty-status", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
+  try {
+    const hc = ensureHeadClerk(req, res);
+    if (!hc) return;
+
+    const users = db.prepare(`
+      SELECT username, full_name, department, role
+      FROM users
+      WHERE role IN ('faculty','hod','registry','officestaff')
+      ORDER BY full_name
+    `).all();
+
+    const summer = db.prepare(`
+      SELECT * FROM summer_winter_vacation
+      WHERE vacation_type='Summer Vacation' AND is_active=1
+      ORDER BY id DESC LIMIT 1
+    `).get();
+
+    const winter = db.prepare(`
+      SELECT * FROM summer_winter_vacation
+      WHERE vacation_type='Winter Vacation' AND is_active=1
+      ORDER BY id DESC LIMIT 1
+    `).get();
+
+    const data = users.map((u) => {
+      let summer_used = 0;
+      let winter_used = 0;
+
+      if (summer) {
+        summer_used = Number(
+          db.prepare(`
+            SELECT COALESCE(SUM(duration_days),0) d
+            FROM leave_requests
+            WHERE user_username = ?
+              AND leave_category = 'vacation'
+              AND special_leave_type = 'Summer Vacation'
+              AND status = 'Approved'
+              AND start_date >= ?
+              AND end_date <= ?
+          `).get(u.username, summer.start_date, summer.end_date).d
+        );
+      }
+
+      if (winter) {
+        winter_used = Number(
+          db.prepare(`
+            SELECT COALESCE(SUM(duration_days),0) d
+            FROM leave_requests
+            WHERE user_username = ?
+              AND leave_category = 'vacation'
+              AND special_leave_type = 'Winter Vacation'
+              AND status = 'Approved'
+              AND start_date >= ?
+              AND end_date <= ?
+          `).get(u.username, winter.start_date, winter.end_date).d
+        );
+      }
+
+      return {
+        username: u.username,
+        full_name: u.full_name,
+        department: u.department,
+        role: u.role,
+        summer_quota: 27,
+        summer_used,
+        summer_remaining: Math.max(0, 27 - summer_used),
+        winter_quota: 21,
+        winter_used,
+        winter_remaining: Math.max(0, 21 - winter_used)
+      };
+    });
+
+    return res.json(data);
+  } catch (e) {
+    console.error("HEADCLERK vacation/faculty-status error:", e);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// 7) GET /api/headclerk/vacation/calendar
 router.get("/headclerk/vacation/calendar", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);
@@ -299,10 +296,11 @@ router.get("/headclerk/vacation/calendar", authenticateToken, authorizeRoles("he
     const { start, end } = monthRange(Number(year), Number(month));
 
     const rows = db.prepare(`
-      SELECT lr.id, lr.user_username, lr.start_date, lr.end_date, lr.reason, u.full_name, u.department
+      SELECT lr.id, lr.user_username, lr.start_date, lr.end_date, lr.reason, lr.special_leave_type, u.full_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.status = 'Approved'
+        AND lr.leave_category = 'vacation'
         AND lr.start_date <= ?
         AND lr.end_date >= ?
         ${department ? "AND u.department = ?" : ""}
@@ -317,7 +315,7 @@ router.get("/headclerk/vacation/calendar", authenticateToken, authorizeRoles("he
   }
 });
 
-// 10) GET /api/headclerk/faculty/by-department
+// 8) GET /api/headclerk/faculty/by-department
 router.get("/headclerk/faculty/by-department", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);

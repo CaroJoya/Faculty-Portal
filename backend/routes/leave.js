@@ -19,12 +19,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 function calculateLeaveDays(start, end, leaveType) {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const msInDay = 1000 * 60 * 60 * 24;
-  const diffDays = Math.floor((endDate - startDate) / msInDay) + 1;
   if (leaveType === "half_day") return 0.5;
-  return diffDays > 0 ? diffDays : 0;
+  const d = db.prepare(`SELECT (julianday(?) - julianday(?) + 1) AS d`).get(end, start).d;
+  return Number(d || 0);
 }
 
 // POST /api/leave-requests
@@ -34,44 +31,62 @@ router.post(
   authorizeRoles("faculty", "hod", "officestaff", "registry"),
   upload.single("attachment"),
   (req, res) => {
-    const {
-      start_date,
-      end_date,
-      reason,
-      leave_type = "full_day",
-      leave_category = "casual",
-      special_leave_type = "regular"
-    } = req.body;
+    try {
+      const {
+        start_date,
+        end_date: raw_end_date,
+        reason,
+        leave_type = "full_day",
+        leave_category = "casual",
+        special_leave_type = "regular"
+      } = req.body;
 
-    if (!start_date || !end_date || !reason) {
-      return res.status(400).json({ message: "Missing required fields" });
+      const end_date = leave_type === "half_day" ? start_date : raw_end_date;
+      const duration_days = calculateLeaveDays(start_date, end_date, leave_type);
+
+      if (!start_date || !end_date || !reason) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (duration_days <= 0) {
+        return res.status(400).json({ message: "Invalid date range" });
+      }
+
+      const attachment_path = req.file ? `/uploads/${req.file.filename}` : null;
+
+      // OD letter is uploaded by user (mandatory for OD)
+      if ((special_leave_type || "").toLowerCase() === "od" && !attachment_path) {
+        return res.status(400).json({ message: "OD letter upload is required for OD leave request" });
+      }
+
+      const insert = db.prepare(`
+        INSERT INTO leave_requests (
+          user_username, start_date, end_date, duration_days, reason, status, leave_type, leave_category,
+          special_leave_type, attachment_path, letter_path
+        )
+        VALUES (?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, NULL)
+      `);
+
+      const result = insert.run(
+        req.user.username,
+        start_date,
+        end_date,
+        duration_days,
+        reason,
+        leave_type,
+        leave_category,
+        special_leave_type,
+        attachment_path
+      );
+
+      res.status(201).json({
+        message: "Leave request submitted successfully",
+        leaveRequestId: result.lastInsertRowid,
+        duration_days
+      });
+    } catch (e) {
+      console.error("leave-requests POST error:", e);
+      return res.status(500).json({ message: "Internal Server Error" });
     }
-
-    const attachment_path = req.file ? `/uploads/${req.file.filename}` : null;
-
-    const insert = db.prepare(`
-      INSERT INTO leave_requests (
-        user_username, start_date, end_date, reason, status, leave_type, leave_category,
-        special_leave_type, attachment_path
-      )
-      VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?)
-    `);
-
-    const result = insert.run(
-      req.user.username,
-      start_date,
-      end_date,
-      reason,
-      leave_type,
-      leave_category,
-      special_leave_type,
-      attachment_path
-    );
-
-    res.status(201).json({
-      message: "Leave request submitted successfully",
-      leaveRequestId: result.lastInsertRowid
-    });
   }
 );
 
@@ -147,7 +162,4 @@ router.get("/leave-requests/stats", authenticateToken, (req, res) => {
   res.json(rows);
 });
 
-
-
 module.exports = router;
-

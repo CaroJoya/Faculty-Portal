@@ -1,132 +1,207 @@
-import { useEffect, useMemo, useState } from "react";
-import api from "../api/axios";
+import React, { useMemo, useState } from "react";
+import axios from "axios";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function RequestLeave() {
-  const [tab, setTab] = useState("regular");
-  const [me, setMe] = useState(null);
-
-  const [regular, setRegular] = useState({
+  const [form, setForm] = useState({
     start_date: "",
     end_date: "",
-    reason: "",
     leave_type: "full_day",
     leave_category: "casual",
     special_leave_type: "regular",
-    attachment: null
+    reason: ""
   });
+  const [attachment, setAttachment] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const [comp, setComp] = useState({
-    work_date: "",
-    hours_worked: 8,
-    reason: "",
-    work_type: "holiday",
-    evidenceType: "document"
-  });
+  const token = localStorage.getItem("token");
 
-  useEffect(() => {
-    api.get("/me").then((r) => setMe(r.data));
-  }, []);
+  const duration = useMemo(() => {
+    if (!form.start_date) return 0;
+    if (form.leave_type === "half_day") return 0.5;
+    if (!form.end_date) return 0;
+    const s = new Date(form.start_date);
+    const e = new Date(form.end_date);
+    const d = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+    return d > 0 ? d : 0;
+  }, [form.start_date, form.end_date, form.leave_type]);
 
-  const calcLeaves = useMemo(() => Math.floor((Number(comp.hours_worked || 0)) / 5), [comp.hours_worked]);
-
-  const submitRegular = async (e) => {
-    e.preventDefault();
-    const fd = new FormData();
-    Object.entries(regular).forEach(([k, v]) => {
-      if (k === "attachment") return;
-      fd.append(k, v);
+  const onChange = (key, value) => {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "leave_type" && value === "half_day") {
+        next.end_date = next.start_date;
+      }
+      if (key === "start_date" && next.leave_type === "half_day") {
+        next.end_date = value;
+      }
+      return next;
     });
-    if (regular.attachment) fd.append("attachment", regular.attachment);
-    await api.post("/leave-requests", fd, { headers: { "Content-Type": "multipart/form-data" } });
-    alert("Leave request submitted");
   };
 
-  const submitComp = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    await api.post("/extra-work", {
-      work_date: comp.work_date,
-      hours_worked: Number(comp.hours_worked),
-      reason: comp.reason,
-      work_type: comp.work_type
-    });
-    alert("Compensation request submitted");
+    setMsg("");
+
+    if (!form.start_date || !form.reason) {
+      setMsg("Start date and reason are required");
+      return;
+    }
+
+    const effectiveEnd = form.leave_type === "half_day" ? form.start_date : form.end_date;
+    if (!effectiveEnd) {
+      setMsg("End date is required");
+      return;
+    }
+
+    if (form.special_leave_type.toLowerCase() === "od" && !attachment) {
+      setMsg("OD letter upload is mandatory for OD leave.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const fd = new FormData();
+      fd.append("start_date", form.start_date);
+      fd.append("end_date", effectiveEnd);
+      fd.append("leave_type", form.leave_type);
+      fd.append("leave_category", form.leave_category);
+      fd.append("special_leave_type", form.special_leave_type);
+      fd.append("reason", form.reason);
+      if (attachment) fd.append("attachment", attachment);
+
+      const res = await axios.post(`${API}/leave-requests`, fd, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data"
+        }
+      });
+
+      setMsg(res.data?.message || "Leave request submitted");
+      setForm({
+        start_date: "",
+        end_date: "",
+        leave_type: "full_day",
+        leave_category: "casual",
+        special_leave_type: "regular",
+        reason: ""
+      });
+      setAttachment(null);
+    } catch (err) {
+      setMsg(err?.response?.data?.message || "Failed to submit leave request");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-slate-800">Leave Request</h2>
+    <div className="p-4 max-w-2xl mx-auto">
+      <h1 className="text-xl font-semibold mb-4">Request Leave</h1>
 
-      <div className="flex gap-2">
-        <button onClick={() => setTab("regular")} className={`px-4 py-2 rounded-xl ${tab === "regular" ? "bg-brand-600 text-white" : "bg-white"}`}>Regular Leave</button>
-        <button onClick={() => setTab("comp")} className={`px-4 py-2 rounded-xl ${tab === "comp" ? "bg-brand-600 text-white" : "bg-white"}`}>Compensation Request</button>
-      </div>
+      {/* Compensation tab removed intentionally */}
 
-      {me && (
-        <div className="bg-white rounded-2xl p-4 shadow text-sm flex flex-wrap gap-2">
-          <span className="px-2 py-1 rounded-full bg-blue-50">Medical: {me.medical_leave_left}</span>
-          <span className="px-2 py-1 rounded-full bg-emerald-50">Casual: {me.casual_leave_left}</span>
-          <span className="px-2 py-1 rounded-full bg-violet-50">Earned: {me.earned_leave_left}</span>
+      <form onSubmit={submit} className="space-y-3 bg-white p-4 rounded shadow">
+        <div>
+          <label className="block text-sm mb-1">Start Date</label>
+          <input
+            type="date"
+            className="border rounded px-3 py-2 w-full"
+            value={form.start_date}
+            onChange={(e) => onChange("start_date", e.target.value)}
+          />
         </div>
-      )}
 
-      {tab === "regular" ? (
-        <form onSubmit={submitRegular} className="bg-white rounded-2xl p-5 shadow grid md:grid-cols-2 gap-3">
-          <input type="date" className="border rounded-xl p-3" value={regular.start_date} onChange={(e) => setRegular({ ...regular, start_date: e.target.value })} required />
-          <input type="date" className="border rounded-xl p-3" value={regular.end_date} onChange={(e) => setRegular({ ...regular, end_date: e.target.value })} required />
-
-          <select className="border rounded-xl p-3" value={regular.special_leave_type} onChange={(e) => setRegular({ ...regular, special_leave_type: e.target.value })}>
-            <option value="regular">Regular</option>
-            <option value="od">OD</option>
-            <option value="extended_medical">Extended Medical</option>
-            <option value="maternity">Maternity/Paternity</option>
-          </select>
-
-          <select className="border rounded-xl p-3" value={regular.leave_category} onChange={(e) => setRegular({ ...regular, leave_category: e.target.value })}>
-            <option value="medical">Medical</option>
-            <option value="casual">Casual</option>
-            <option value="earned">Earned</option>
-          </select>
-
-          <select className="border rounded-xl p-3" value={regular.leave_type} onChange={(e) => setRegular({ ...regular, leave_type: e.target.value })}>
+        <div>
+          <label className="block text-sm mb-1">Leave Type</label>
+          <select
+            className="border rounded px-3 py-2 w-full"
+            value={form.leave_type}
+            onChange={(e) => onChange("leave_type", e.target.value)}
+          >
             <option value="full_day">Full Day</option>
             <option value="half_day">Half Day</option>
           </select>
+        </div>
 
+        <div>
+          <label className="block text-sm mb-1">End Date</label>
+          <input
+            type="date"
+            className="border rounded px-3 py-2 w-full disabled:bg-gray-100"
+            value={form.leave_type === "half_day" ? form.start_date : form.end_date}
+            disabled={form.leave_type === "half_day"}
+            onChange={(e) => onChange("end_date", e.target.value)}
+          />
+          {form.leave_type === "half_day" && (
+            <p className="text-xs text-gray-600 mt-1">End date auto-set to start date for Half Day.</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">Leave Category</label>
+          <select
+            className="border rounded px-3 py-2 w-full"
+            value={form.leave_category}
+            onChange={(e) => onChange("leave_category", e.target.value)}
+          >
+            <option value="casual">Casual Leave</option>
+            <option value="medical">Medical Leave</option>
+            <option value="earned">Earned Leave</option>
+            <option value="vacation">Vacation</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">Special Leave Type</label>
+          <select
+            className="border rounded px-3 py-2 w-full"
+            value={form.special_leave_type}
+            onChange={(e) => onChange("special_leave_type", e.target.value)}
+          >
+            <option value="regular">Regular</option>
+            <option value="od">OD</option>
+            <option value="maternity">Maternity/Paternity</option>
+            <option value="extended_medical">Extended Medical</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">
+            Attachment {form.special_leave_type === "od" ? "(OD letter required)" : ""}
+          </label>
           <input
             type="file"
-            className="border rounded-xl p-3"
-            onChange={(e) => setRegular({ ...regular, attachment: e.target.files?.[0] || null })}
+            className="border rounded px-3 py-2 w-full"
+            onChange={(e) => setAttachment(e.target.files?.[0] || null)}
           />
+        </div>
 
-          <textarea className="border rounded-xl p-3 md:col-span-2" rows={4} placeholder="Reason" value={regular.reason} onChange={(e) => setRegular({ ...regular, reason: e.target.value })} required />
+        <div>
+          <label className="block text-sm mb-1">Reason</label>
+          <textarea
+            className="border rounded px-3 py-2 w-full"
+            rows={3}
+            value={form.reason}
+            onChange={(e) => onChange("reason", e.target.value)}
+          />
+        </div>
 
-          {regular.attachment && (
-            <p className="md:col-span-2 text-sm text-slate-600">Selected: {regular.attachment.name}</p>
-          )}
+        <div className="text-sm">
+          <strong>Duration:</strong> {duration} day(s)
+        </div>
 
-          <button className="md:col-span-2 bg-brand-600 text-white py-3 rounded-xl font-semibold">Submit Leave Request</button>
-        </form>
-      ) : (
-        <form onSubmit={submitComp} className="bg-white rounded-2xl p-5 shadow grid md:grid-cols-2 gap-3">
-          <input type="date" className="border rounded-xl p-3" value={comp.work_date} onChange={(e) => setComp({ ...comp, work_date: e.target.value })} required />
-          <input type="number" step="0.5" className="border rounded-xl p-3" value={comp.hours_worked} onChange={(e) => setComp({ ...comp, hours_worked: e.target.value })} required />
-          <select className="border rounded-xl p-3" value={comp.work_type} onChange={(e) => setComp({ ...comp, work_type: e.target.value })}>
-            <option value="holiday">Holiday</option>
-            <option value="weekend">Weekend</option>
-            <option value="after_hours">After Hours</option>
-          </select>
-          <select className="border rounded-xl p-3" value={comp.evidenceType} onChange={(e) => setComp({ ...comp, evidenceType: e.target.value })}>
-            <option value="document">Document</option>
-            <option value="mail">Email Proof</option>
-            <option value="report">Work Report</option>
-          </select>
-          <textarea className="border rounded-xl p-3 md:col-span-2" rows={4} placeholder="Work Description" value={comp.reason} onChange={(e) => setComp({ ...comp, reason: e.target.value })} required />
-          <div className="md:col-span-2 rounded-xl bg-indigo-50 p-3 text-indigo-700 text-sm">
-            Live Preview: {comp.hours_worked} hours = approximately {calcLeaves} earned leave(s)
-          </div>
-          <button className="md:col-span-2 bg-brand-600 text-white py-3 rounded-xl font-semibold">Submit Compensation Request</button>
-        </form>
-      )}
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          {loading ? "Submitting..." : "Submit"}
+        </button>
+
+        {msg && <p className="text-sm mt-2">{msg}</p>}
+      </form>
     </div>
   );
 }

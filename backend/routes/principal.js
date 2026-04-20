@@ -1,6 +1,4 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
 
@@ -57,36 +55,6 @@ function deductLeaveBalance(username, category, days) {
       WHERE username = ?
     `).run(d, d, username);
   }
-}
-
-function generateOdLetter(reqRow, userRow, principalUsername) {
-  const lettersDir = path.join(__dirname, "../uploads/od-letters");
-  if (!fs.existsSync(lettersDir)) fs.mkdirSync(lettersDir, { recursive: true });
-
-  const fileName = `od_letter_${reqRow.id}_${Date.now()}.html`;
-  const filePath = path.join(lettersDir, fileName);
-
-  const html = `
-<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>OD Attendance Letter</title></head>
-<body style="font-family: Arial, sans-serif; padding: 24px;">
-  <h2>On-Duty Attendance Approval Letter</h2>
-  <p><strong>Employee:</strong> ${userRow.full_name} (${userRow.username})</p>
-  <p><strong>Department:</strong> ${userRow.department}</p>
-  <p><strong>Period:</strong> ${reqRow.start_date} to ${reqRow.end_date}</p>
-  <p><strong>Leave Category:</strong> ${reqRow.leave_category || "-"}</p>
-  <p><strong>Special Leave Type:</strong> ${reqRow.special_leave_type || "-"}</p>
-  <p><strong>Reason:</strong> ${reqRow.reason || "-"}</p>
-  <hr />
-  <p>This is to certify that the above employee's OD leave has been approved by Principal.</p>
-  <p><strong>Approved By:</strong> ${principalUsername}</p>
-  <p><strong>Approved At:</strong> ${new Date().toISOString()}</p>
-</body>
-</html>`.trim();
-
-  fs.writeFileSync(filePath, html, "utf8");
-  return `/uploads/od-letters/${fileName}`;
 }
 
 // 1) dashboard stats
@@ -330,6 +298,7 @@ router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRole
 });
 
 // 8) final approve (faculty/office/reg/hod)
+// NOTE: OD letter generation REMOVED. OD file is uploaded by user as attachment.
 router.post("/principal/final-approve/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
@@ -346,8 +315,6 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
 
     if (!row) return res.status(404).json({ message: "Pending request not found" });
 
-    let odLetterPath = null;
-
     const tx = db.transaction(() => {
       db.prepare(`
         UPDATE leave_requests
@@ -358,19 +325,14 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
         WHERE id=?
       `).run(admin_comments || null, id);
 
-      deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), parseDays(row));
-
-      if ((row.special_leave_type || "").toLowerCase() === "od") {
-        odLetterPath = generateOdLetter(row, row, req.user.username);
-        const hasCol = db.prepare(`PRAGMA table_info(leave_requests)`).all().some(c => c.name === "od_letter_path");
-        if (hasCol) {
-          db.prepare(`UPDATE leave_requests SET od_letter_path = ? WHERE id = ?`).run(odLetterPath, id);
-        }
+      // Vacation is auto-approved in vacation route; do not deduct here.
+      if ((row.leave_category || "").toLowerCase() !== "vacation") {
+        deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), parseDays(row));
       }
     });
     tx();
 
-    res.json({ message: "Leave finally approved", od_letter_path: odLetterPath });
+    res.json({ message: "Leave finally approved" });
   } catch (e) {
     console.error("PRINCIPAL final-approve error:", e);
     res.status(500).json({ message: "Internal Server Error" });
@@ -408,6 +370,49 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
   } catch (e) {
     console.error("PRINCIPAL final-reject error:", e);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// 10) POST /api/principal/auto-approve-pending
+router.post("/principal/auto-approve-pending", authenticateToken, authorizeRoles("principal"), (req, res) => {
+  try {
+    if (!ensurePrincipal(req, res)) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const pendingRows = db.prepare(`
+      SELECT lr.*, u.role
+      FROM leave_requests lr
+      JOIN users u ON u.username = lr.user_username
+      WHERE lr.status = 'Pending'
+        AND date(lr.start_date) <= date(?)
+    `).all(today);
+
+    const tx = db.transaction(() => {
+      for (const row of pendingRows) {
+        db.prepare(`
+          UPDATE leave_requests
+          SET status='Approved',
+              approved_at=CURRENT_TIMESTAMP,
+              final_approver='Auto-Approved'
+          WHERE id=?
+        `).run(row.id);
+
+        if ((row.leave_category || "").toLowerCase() !== "vacation") {
+          deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), parseDays(row));
+        }
+      }
+    });
+    tx();
+
+    return res.json({
+      message: "Auto-approve run completed",
+      auto_approved_count: pendingRows.length,
+      run_date: today
+    });
+  } catch (e) {
+    console.error("PRINCIPAL auto-approve-pending error:", e);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
