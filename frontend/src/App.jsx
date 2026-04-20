@@ -48,6 +48,7 @@ export default function App() {
       <Routes>
         {/* default */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/Login" element={<Login />} /> 
 
         {/* shared */}
         <Route
