@@ -2,22 +2,23 @@ import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
+import Login from "./pages/Login";
 
 // Faculty
-import FacultyDashboard from "./pages/faculty/Dashboard";
-import FacultyRequestLeave from "./pages/faculty/RequestLeave";
-import FacultyStatus from "./pages/faculty/Status";
-import FacultyProfile from "./pages/faculty/Profile";
-import FacultyVacation from "./pages/faculty/Vacation";
+import FacultyDashboard from "./pages/Dashboard";
+import FacultyRequestLeave from "./pages/RequestLeave";
+import FacultyStatus from "./pages/Status";
+import FacultyProfile from "./pages/Profile";
+import FacultyVacation from "./pages/Vacation";
 
 // Role vacation clones
-import OfficeStaffVacation from "./pages/officeStaff/OfficeStaffVacation";
-import RegistryVacation from "./pages/registry/RegistryVacation";
-import HODVacation from "./pages/hod/HODVacation";
+import OfficeStaffVacation from "./pages/OfficeStaffVacation";
+import RegistryVacation from "./pages/RegistryVacation";
+import HODVacation from "./pages/HODVacation";
 
 // Head Clerk
-import HeadClerkAttendanceCalendar from "./pages/headClerk/HeadClerkAttendanceCalendar";
-import HeadClerkVacationManagement from "./pages/headClerk/HeadClerkVacationManagement";
+import HeadClerkAttendanceCalendar from "./pages/HeadClerkAttendanceCalendar";
+import HeadClerkVacationManagement from "./pages/HeadClerkVacationManagement";
 
 // ---- helpers ----
 function getUser() {
