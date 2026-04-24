@@ -16,6 +16,33 @@ function canAccess(requestUser, row) {
   return false;
 }
 
+// Helper function to extract recommendations from reason field
+function extractRecommendations(reasonText) {
+  if (!reasonText) return null;
+  
+  const marker = "--- Recommended Alternate Faculty ---";
+  const index = reasonText.indexOf(marker);
+  
+  if (index === -1) return null;
+  
+  const recsPart = reasonText.substring(index + marker.length).trim();
+  if (!recsPart) return null;
+  
+  // Parse bullet points (• symbol)
+  const lines = recsPart.split("\n");
+  const recommendations = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("•")) {
+      const name = trimmed.substring(1).trim();
+      if (name) recommendations.push(name);
+    }
+  }
+  
+  return recommendations.length > 0 ? recommendations : null;
+}
+
 // GET /api/leave-letter/:requestId
 // Query param: ?download=1 (optional)
 router.get("/leave-letter/:requestId", authenticateToken, (req, res) => {
@@ -40,10 +67,36 @@ router.get("/leave-letter/:requestId", authenticateToken, (req, res) => {
 
     let letterPath = row.letter_path || null;
 
+    // NEW: Extract recommendations from reason field
+    const recommendations = extractRecommendations(row.reason);
+    
+    // Get clean reason without the recommendations section
+    let cleanReason = row.reason || "-";
+    const marker = "--- Recommended Alternate Faculty ---";
+    const markerIndex = cleanReason.indexOf(marker);
+    if (markerIndex !== -1) {
+      cleanReason = cleanReason.substring(0, markerIndex).trim();
+    }
+
     // Generate once and store path
     if (!letterPath) {
       const fileName = `leave_letter_${row.id}_${Date.now()}.html`;
       const absPath = path.join(lettersDir, fileName);
+
+      // Build recommendations HTML section if present
+      let recommendationsHtml = "";
+      if (recommendations && recommendations.length > 0) {
+        const recsListItems = recommendations.map(rec => `<li style="margin-bottom: 4px;">${escapeHtml(rec)}</li>`).join("");
+        recommendationsHtml = `
+          <hr />
+          <div style="margin-top: 16px;">
+            <p><strong>Recommended Alternate Faculty Arrangements:</strong></p>
+            <ul style="margin-top: 8px; margin-bottom: 8px; padding-left: 20px;">
+              ${recsListItems}
+            </ul>
+          </div>
+        `;
+      }
 
       const html = `<!doctype html>
 <html>
@@ -57,24 +110,26 @@ router.get("/leave-letter/:requestId", authenticateToken, (req, res) => {
     <p style="margin: 6px 0 0 0;">(Letterhead Placeholder)</p>
   </div>
 
-  <p><strong>Employee Name:</strong> ${row.full_name}</p>
-  <p><strong>Department:</strong> ${row.department || "-"}</p>
-  <p><strong>Designation:</strong> ${row.designation || "-"}</p>
+  <p><strong>Employee Name:</strong> ${escapeHtml(row.full_name)}</p>
+  <p><strong>Department:</strong> ${escapeHtml(row.department || "-")}</p>
+  <p><strong>Designation:</strong> ${escapeHtml(row.designation || "-")}</p>
 
   <hr />
 
-  <p><strong>Leave Category:</strong> ${row.leave_category || "-"}</p>
-  <p><strong>Special Leave Type:</strong> ${row.special_leave_type || "-"}</p>
-  <p><strong>Leave Type:</strong> ${row.leave_type || "-"}</p>
-  <p><strong>From:</strong> ${row.start_date}</p>
-  <p><strong>To:</strong> ${row.end_date}</p>
+  <p><strong>Leave Category:</strong> ${escapeHtml(row.leave_category || "-")}</p>
+  <p><strong>Special Leave Type:</strong> ${escapeHtml(row.special_leave_type || "-")}</p>
+  <p><strong>Leave Type:</strong> ${escapeHtml(row.leave_type || "-")}</p>
+  <p><strong>From:</strong> ${escapeHtml(row.start_date)}</p>
+  <p><strong>To:</strong> ${escapeHtml(row.end_date)}</p>
   <p><strong>Duration (days):</strong> ${row.duration_days != null ? row.duration_days : "-"}</p>
-  <p><strong>Reason:</strong> ${row.reason || "-"}</p>
+  <p><strong>Reason:</strong> ${escapeHtml(cleanReason)}</p>
+
+  ${recommendationsHtml}
 
   <hr />
 
-  <p><strong>Approved By:</strong> ${row.final_approver || "Principal"}</p>
-  <p><strong>Approval Date:</strong> ${row.approved_at || "-"}</p>
+  <p><strong>Approved By:</strong> ${escapeHtml(row.final_approver || "Principal")}</p>
+  <p><strong>Approval Date:</strong> ${escapeHtml(row.approved_at || "-")}</p>
 
   <br />
   <p>Signature: __________________________</p>
@@ -105,5 +160,16 @@ router.get("/leave-letter/:requestId", authenticateToken, (req, res) => {
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
+// Helper function to escape HTML special characters
+function escapeHtml(str) {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 module.exports = router;

@@ -15,8 +15,21 @@ export default function RequestLeave() {
   const [attachment, setAttachment] = useState(null);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // NEW: State for alternate faculty recommendations (max 3)
+  const [recommendations, setRecommendations] = useState(["", "", ""]);
 
   const token = localStorage.getItem("token");
+  
+  // NEW: Get current user role to conditionally show recommendations section
+  const userRole = useMemo(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "null");
+      return user?.role;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const duration = useMemo(() => {
     if (!form.start_date) return 0;
@@ -39,6 +52,13 @@ export default function RequestLeave() {
       }
       return next;
     });
+  };
+
+  // NEW: Update recommendation at specific index
+  const updateRecommendation = (index, value) => {
+    const newRecs = [...recommendations];
+    newRecs[index] = value;
+    setRecommendations(newRecs);
   };
 
   const submit = async (e) => {
@@ -71,6 +91,12 @@ export default function RequestLeave() {
       fd.append("special_leave_type", form.special_leave_type);
       fd.append("reason", form.reason);
       if (attachment) fd.append("attachment", attachment);
+      
+      // NEW: Append recommendations (only non-empty values)
+      const nonEmptyRecs = recommendations.filter(r => r.trim() !== "");
+      if (nonEmptyRecs.length > 0) {
+        fd.append("recommendations", JSON.stringify(nonEmptyRecs));
+      }
 
       const res = await axios.post(`${API}/leave-requests`, fd, {
         headers: {
@@ -89,6 +115,7 @@ export default function RequestLeave() {
         reason: ""
       });
       setAttachment(null);
+      setRecommendations(["", "", ""]); // NEW: Reset recommendations
     } catch (err) {
       setMsg(err?.response?.data?.message || "Failed to submit leave request");
     } finally {
@@ -99,8 +126,6 @@ export default function RequestLeave() {
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <h1 className="text-xl font-semibold mb-4">Request Leave</h1>
-
-      {/* Compensation tab removed intentionally */}
 
       <form onSubmit={submit} className="space-y-3 bg-white p-4 rounded shadow">
         <div>
@@ -166,6 +191,29 @@ export default function RequestLeave() {
             <option value="extended_medical">Extended Medical</option>
           </select>
         </div>
+
+        {/* NEW: Alternate Faculty Recommendations Section - Faculty Only */}
+        {userRole === "faculty" && (
+          <div className="border-t border-gray-200 pt-3 mt-2">
+            <label className="block text-sm font-medium mb-2 text-gray-700">
+              Recommended Alternate Faculty (Optional)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Suggest up to 3 faculty members who can manage duties during your leave
+            </p>
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="mb-2">
+                <input
+                  type="text"
+                  className="border rounded px-3 py-2 w-full"
+                  placeholder={`Alternate faculty ${idx + 1} (optional)`}
+                  value={recommendations[idx]}
+                  onChange={(e) => updateRecommendation(idx, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div>
           <label className="block text-sm mb-1">
