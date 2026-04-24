@@ -1,6 +1,6 @@
 import React from "react";
-import FacultyVacation from "./faculty/Vacation";
+import Vacation from "./Vacation";
 
 export default function RegistryVacation() {
-  return <FacultyVacation />;
+  return <Vacation />;
 }

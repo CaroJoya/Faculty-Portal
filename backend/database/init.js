@@ -65,10 +65,17 @@ function createTables() {
       summer_vacation_earned REAL DEFAULT 0,
       winter_vacation_earned REAL DEFAULT 0,
       total_vacation_earned REAL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      deleted_at DATETIME,
+      deleted_by TEXT,
+      restored_at DATETIME,
+      restored_by TEXT
     )
   `).run();
 
+  // ... rest of your existing createTables() code (leave_requests, extra_work_days, etc.)
+  // Keep all your existing table creation code here exactly as before
+  
   // leave_requests
   db.prepare(`
     CREATE TABLE IF NOT EXISTS leave_requests (
@@ -94,7 +101,7 @@ function createTables() {
     )
   `).run();
 
-  // extra_work_days (existing legacy structure)
+  // extra_work_days
   db.prepare(`
     CREATE TABLE IF NOT EXISTS extra_work_days (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,14 +123,13 @@ function createTables() {
     )
   `).run();
 
-  // leave_conversions (existing legacy structure)
+  // leave_conversions
   db.prepare(`
     CREATE TABLE IF NOT EXISTS leave_conversions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       extra_work_day_id INTEGER,
       leave_request_id INTEGER,
       user_username TEXT,
-      extra_work_id INTEGER,
       hours_used REAL,
       earned_days REAL,
       status TEXT DEFAULT 'pending',
@@ -161,7 +167,7 @@ function createTables() {
     )
   `).run();
 
-  // legacy vacation_periods (kept for compatibility; not removed abruptly)
+  // vacation_periods
   db.prepare(`
     CREATE TABLE IF NOT EXISTS vacation_periods (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,22 +178,22 @@ function createTables() {
     )
   `).run();
 
-  // new summer/winter periods
+  // summer_winter_vacation
   db.prepare(`
     CREATE TABLE IF NOT EXISTS summer_winter_vacation (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vacation_type TEXT NOT NULL, -- Summer Vacation / Winter Vacation
+      vacation_type TEXT NOT NULL,
       year INTEGER NOT NULL,
       start_date DATE NOT NULL,
       end_date DATE NOT NULL,
       total_days INTEGER DEFAULT 40,
-      paid_leave_quota REAL NOT NULL, -- 27 (Summer), 21 (Winter)
+      paid_leave_quota REAL NOT NULL,
       is_active BOOLEAN DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `).run();
 
-  // vacation calculations
+  // faculty_vacation_calculation
   db.prepare(`
     CREATE TABLE IF NOT EXISTS faculty_vacation_calculation (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,7 +266,7 @@ function runSafeMigrations() {
     console.log("Migration: added leave_conversions.approver_comments");
   }
 
-  // ensure new tables exist (for older DBs)
+  // ensure new tables exist
   if (!tableExists("summer_winter_vacation")) {
     db.prepare(`
       CREATE TABLE summer_winter_vacation (
@@ -293,6 +299,24 @@ function runSafeMigrations() {
       )
     `).run();
     console.log("Migration: created faculty_vacation_calculation");
+  }
+
+  // NEW: Add soft delete columns if they don't exist
+  if (!hasColumn("users", "deleted_at")) {
+    db.prepare(`ALTER TABLE users ADD COLUMN deleted_at DATETIME`).run();
+    console.log("Migration: added users.deleted_at");
+  }
+  if (!hasColumn("users", "deleted_by")) {
+    db.prepare(`ALTER TABLE users ADD COLUMN deleted_by TEXT`).run();
+    console.log("Migration: added users.deleted_by");
+  }
+  if (!hasColumn("users", "restored_at")) {
+    db.prepare(`ALTER TABLE users ADD COLUMN restored_at DATETIME`).run();
+    console.log("Migration: added users.restored_at");
+  }
+  if (!hasColumn("users", "restored_by")) {
+    db.prepare(`ALTER TABLE users ADD COLUMN restored_by TEXT`).run();
+    console.log("Migration: added users.restored_by");
   }
 }
 
@@ -352,12 +376,12 @@ function seedDefaultUsers() {
 function initDatabase() {
   try {
     createTables();
-    runSafeMigrations(); // IMPORTANT: safe permanent schema updates
+    runSafeMigrations();
     seedDefaultUsers();
 
-    const totalUsers = db.prepare("SELECT COUNT(*) as c FROM users").get().c;
+    const totalUsers = db.prepare("SELECT COUNT(*) as c FROM users WHERE deleted_at IS NULL").get().c;
     console.log("Database initialized successfully.");
-    console.log("Total users in DB:", totalUsers);
+    console.log("Total active users in DB:", totalUsers);
   } catch (err) {
     console.error("DB INIT ERROR:", err);
     throw err;

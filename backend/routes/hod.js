@@ -20,7 +20,7 @@ function ensureHod(req, res) {
   return department;
 }
 
-// 1) GET /api/hod/dashboard-stats
+// ========== 1) GET /api/hod/dashboard-stats ==========
 router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -29,7 +29,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
     const total_faculty = db.prepare(`
       SELECT COUNT(*) AS count
       FROM users
-      WHERE role = 'faculty' AND department = ?
+      WHERE role = 'faculty' AND department = ? AND deleted_at IS NULL
     `).get(hodDepartment).count;
 
     const pending_faculty_leaves = db.prepare(`
@@ -38,6 +38,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get(hodDepartment).count;
@@ -48,6 +49,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Approved'
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get(hodDepartment).count;
@@ -58,6 +60,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Rejected'
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get(hodDepartment).count;
@@ -80,6 +83,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
@@ -95,6 +99,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get(hodDepartment);
@@ -115,7 +120,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
   }
 });
 
-// 2) GET /api/hod/faculty-requests
+// ========== 2) GET /api/hod/faculty-requests ==========
 router.get("/hod/faculty-requests", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -133,6 +138,7 @@ router.get("/hod/faculty-requests", authenticateToken, authorizeRoles("hod"), (r
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
@@ -145,7 +151,7 @@ router.get("/hod/faculty-requests", authenticateToken, authorizeRoles("hod"), (r
   }
 });
 
-// 3) GET /api/hod/request/:id
+// ========== 3) GET /api/hod/request/:id ==========
 router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -168,6 +174,7 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ?
         AND u.role = 'faculty'
+        AND u.deleted_at IS NULL
     `).get(id);
 
     if (!requestRow) return res.status(404).json({ message: "Request not found" });
@@ -208,7 +215,7 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
   }
 });
 
-// 4) POST /api/hod/forward-to-principal/:id
+// ========== 4) POST /api/hod/forward-to-principal/:id ==========
 router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -221,7 +228,7 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
       SELECT lr.id, lr.status, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id = ? AND u.role = 'faculty'
+      WHERE lr.id = ? AND u.role = 'faculty' AND u.deleted_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Request not found" });
@@ -251,7 +258,7 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
   }
 });
 
-// 5) POST /api/hod/reject-request/:id
+// ========== 5) POST /api/hod/reject-request/:id ==========
 router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -268,7 +275,7 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
       SELECT lr.id, lr.status, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id = ? AND u.role = 'faculty'
+      WHERE lr.id = ? AND u.role = 'faculty' AND u.deleted_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Request not found" });
@@ -298,7 +305,7 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
   }
 });
 
-// 6) GET /api/hod/faculty-list
+// ========== 6) GET /api/hod/faculty-list ==========
 router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -321,6 +328,7 @@ router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, 
       FROM users u
       WHERE u.role = 'faculty'
         AND u.department = ?
+        AND u.deleted_at IS NULL
       ORDER BY u.full_name ASC
     `).all(hodDepartment);
 
@@ -331,7 +339,7 @@ router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, 
   }
 });
 
-// 7) POST /api/hod/add-faculty
+// ========== 7) POST /api/hod/add-faculty ==========
 router.post("/hod/add-faculty", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -411,7 +419,7 @@ router.post("/hod/add-faculty", authenticateToken, authorizeRoles("hod"), (req, 
   }
 });
 
-// 8) POST /api/hod/reset-password/:username
+// ========== 8) POST /api/hod/reset-password/:username ==========
 router.post("/hod/reset-password/:username", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -441,15 +449,21 @@ router.post("/hod/reset-password/:username", authenticateToken, authorizeRoles("
   }
 });
 
-// 9) DELETE /api/hod/delete-faculty/:username (hard delete)
+// ========== 9) DELETE /api/hod/delete-faculty/:username (SOFT DELETE with 30-day restore) ==========
 router.delete("/hod/delete-faculty/:username", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
     if (!hodDepartment) return;
 
     const targetUsername = req.params.username;
+    
+    // PREVENT SELF-DELETE
+    if (targetUsername === req.user.username) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+    
     const faculty = db.prepare(`
-      SELECT username, role, department
+      SELECT username, role, department, deleted_at
       FROM users
       WHERE username = ?
     `).get(targetUsername);
@@ -459,21 +473,154 @@ router.delete("/hod/delete-faculty/:username", authenticateToken, authorizeRoles
     if (faculty.department !== hodDepartment) {
       return res.status(403).json({ message: "Forbidden: Different department" });
     }
+    
+    // Check if already deleted
+    if (faculty.deleted_at) {
+      return res.status(400).json({ message: "Faculty already deleted" });
+    }
 
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM leave_conversions WHERE leave_request_id IN (SELECT id FROM leave_requests WHERE user_username = ?)").run(targetUsername);
-      db.prepare("DELETE FROM leave_conversions WHERE extra_work_day_id IN (SELECT id FROM extra_work_days WHERE user_username = ?)").run(targetUsername);
-      db.prepare("DELETE FROM leave_requests WHERE user_username = ?").run(targetUsername);
-      db.prepare("DELETE FROM extra_work_days WHERE user_username = ?").run(targetUsername);
-      db.prepare("DELETE FROM attendance WHERE user_username = ?").run(targetUsername);
-      db.prepare("DELETE FROM users WHERE username = ?").run(targetUsername);
+    // SOFT DELETE - just mark deleted_at and deleted_by
+    db.prepare(`
+      UPDATE users
+      SET deleted_at = CURRENT_TIMESTAMP,
+          deleted_by = ?
+      WHERE username = ?
+    `).run(req.user.username, targetUsername);
+
+    res.json({ 
+      message: `Faculty ${targetUsername} soft deleted successfully. They can be restored within 30 days.`,
+      deleted_at: new Date().toISOString(),
+      deleted_by: req.user.username
     });
-
-    tx();
-
-    res.json({ message: `Faculty ${targetUsername} deleted successfully` });
   } catch (err) {
     console.error("HOD delete-faculty error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// ========== 10) POST /api/hod/restore-faculty/:username ==========
+router.post("/hod/restore-faculty/:username", authenticateToken, authorizeRoles("hod"), (req, res) => {
+  try {
+    const hodDepartment = ensureHod(req, res);
+    if (!hodDepartment) return;
+
+    const targetUsername = req.params.username;
+    
+    const faculty = db.prepare(`
+      SELECT username, role, department, deleted_at
+      FROM users
+      WHERE username = ?
+    `).get(targetUsername);
+
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+    if (faculty.role !== "faculty") return res.status(400).json({ message: "Only faculty can be restored" });
+    if (faculty.department !== hodDepartment) {
+      return res.status(403).json({ message: "Forbidden: Different department" });
+    }
+    
+    if (!faculty.deleted_at) {
+      return res.status(400).json({ message: "Faculty is not deleted" });
+    }
+    
+    // Check 30-day window
+    const deletedDate = new Date(faculty.deleted_at);
+    const now = new Date();
+    const daysDeleted = Math.floor((now - deletedDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDeleted > 30) {
+      return res.status(400).json({ 
+        message: `Cannot restore: ${daysDeleted} days have passed. Maximum restore window is 30 days.`,
+        days_passed: daysDeleted
+      });
+    }
+
+    // RESTORE - clear deleted_at and set restored info
+    db.prepare(`
+      UPDATE users
+      SET deleted_at = NULL,
+          deleted_by = NULL,
+          restored_at = CURRENT_TIMESTAMP,
+          restored_by = ?
+      WHERE username = ?
+    `).run(req.user.username, targetUsername);
+
+    res.json({ 
+      message: `Faculty ${targetUsername} restored successfully.`,
+      restored_at: new Date().toISOString(),
+      restored_by: req.user.username,
+      days_until_permanent: 30 - daysDeleted
+    });
+  } catch (err) {
+    console.error("HOD restore-faculty error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// ========== 11) GET /api/hod/deleted-faculty-history ==========
+router.get("/hod/deleted-faculty-history", authenticateToken, authorizeRoles("hod"), (req, res) => {
+  try {
+    const hodDepartment = ensureHod(req, res);
+    if (!hodDepartment) return;
+
+    // Get all deleted faculty in this department
+    const deletedFaculty = db.prepare(`
+      SELECT 
+        u.username,
+        u.full_name,
+        u.email,
+        u.department,
+        u.designation,
+        u.deleted_at,
+        u.deleted_by,
+        u.restored_at,
+        u.restored_by,
+        d.full_name as deleted_by_name,
+        r.full_name as restored_by_name
+      FROM users u
+      LEFT JOIN users d ON d.username = u.deleted_by
+      LEFT JOIN users r ON r.username = u.restored_by
+      WHERE u.role = 'faculty'
+        AND u.department = ?
+        AND u.deleted_at IS NOT NULL
+      ORDER BY u.deleted_at DESC
+    `).all(hodDepartment);
+
+    // For each deleted faculty, get their leave history
+    const result = deletedFaculty.map(faculty => {
+      const leaveHistory = db.prepare(`
+        SELECT 
+          lr.id,
+          lr.start_date,
+          lr.end_date,
+          lr.duration_days,
+          lr.reason,
+          lr.status,
+          lr.leave_category,
+          lr.leave_type,
+          lr.created_at,
+          lr.approved_at,
+          lr.hod_approved_by,
+          lr.final_approver
+        FROM leave_requests lr
+        WHERE lr.user_username = ?
+        ORDER BY lr.created_at DESC
+      `).all(faculty.username);
+
+      return {
+        ...faculty,
+        leave_history: leaveHistory,
+        total_leaves_taken: leaveHistory.length,
+        total_days_consumed: leaveHistory.reduce((sum, l) => sum + (l.duration_days || 0), 0)
+      };
+    });
+
+    res.json({
+      department: hodDepartment,
+      deleted_count: result.length,
+      deleted_faculty: result
+    });
+  } catch (err) {
+    console.error("HOD deleted-faculty-history error:", err);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });

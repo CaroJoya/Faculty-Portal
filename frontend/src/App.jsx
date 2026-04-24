@@ -1,6 +1,5 @@
 import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-
 import Navbar from "./components/Navbar";
 
 // Auth pages
@@ -9,33 +8,60 @@ import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 
-// Faculty
-import FacultyDashboard from "./pages/Dashboard";
-import FacultyRequestLeave from "./pages/RequestLeave";
-import FacultyStatus from "./pages/Status";
-import FacultyProfile from "./pages/Profile";
-import FacultyVacation from "./pages/Vacation";
+// Shared pages
+import Dashboard from "./pages/Dashboard";
+import RequestLeave from "./pages/RequestLeave";
+import Status from "./pages/Status";
+import Profile from "./pages/Profile";
 import History from "./pages/History";
 import Stats from "./pages/Stats";
+import Vacation from "./pages/Vacation";
 
-// Role-specific dashboards
+// HOD pages
 import HODDashboard from "./pages/HODDashboard";
-import RegistryDashboard from "./pages/RegistryDashboard";
-import OfficeStaffDashboard from "./pages/OfficeStaffDashboard";
-import HeadClerkDashboard from "./pages/HeadClerkDashboard";
-import PrincipalDashboard from "./pages/PrincipalDashboard";
-
-// Role-specific pages
 import HODRequestLeave from "./pages/HODRequestLeave";
+import HODRequestDetails from "./pages/HODRequestDetails";
+import HODFacultyRequests from "./pages/HODFacultyRequests";
+import HODFacultyList from "./pages/HODFacultyList";
+import HODAddFaculty from "./pages/HODAddFaculty";
+import HODVacation from "./pages/HODVacation";
+
+// Registry pages
+import RegistryDashboard from "./pages/RegistryDashboard";
+import RegistryRequestLeave from "./pages/RegistryRequestLeave";
+import RegistryRequestDetails from "./pages/RegistryRequestDetails";
+import RegistryStaffRequests from "./pages/RegistryStaffRequests";
+import RegistryStaffList from "./pages/RegistryStaffList";
+import RegistryAddStaff from "./pages/RegistryAddStaff";
+import RegistryStatus from "./pages/RegistryStatus";
+import RegistryStats from "./pages/RegistryStats";
+import RegistryHistory from "./pages/RegistryHistory";
+import RegistryProfile from "./pages/RegistryProfile";
+import RegistryVacation from "./pages/RegistryVacation";
+
+// Office Staff pages
+import OfficeStaffDashboard from "./pages/OfficeStaffDashboard";
 import OfficeStaffRequestLeave from "./pages/OfficeStaffRequestLeave";
+import OfficeStaffStatus from "./pages/OfficeStaffStatus";
+import OfficeStaffProfile from "./pages/OfficeStaffProfile";
 import OfficeStaffHistory from "./pages/OfficeStaffHistory";
 import OfficeStaffStats from "./pages/OfficeStaffStats";
-import RegistryRequestLeave from "./pages/RegistryRequestLeave";
+import OfficeStaffVacation from "./pages/OfficeStaffVacation";
 
-// Role vacation (all use same Vacation component)
-import OfficeStaffVacation from "./pages/Vacation";
-import RegistryVacation from "./pages/Vacation";
-import HODVacation from "./pages/Vacation";
+// Head Clerk pages
+import HeadClerkDashboard from "./pages/HeadClerkDashboard";
+import HeadClerkAttendanceCalendar from "./pages/HeadClerkAttendanceCalendar";
+import HeadClerkMarkAttendance from "./pages/HeadClerkMarkAttendance";
+import HeadClerkUploadAttendance from "./pages/HeadClerkUploadAttendance";
+import HeadClerkVacationCalendar from "./pages/HeadClerkVacationCalendar";
+import HeadClerkVacationManagement from "./pages/HeadClerkVacationManagement";
+import HeadClerkSummerWinterManagement from "./pages/HeadClerkSummerWinterManagement";
+import HeadClerkHolidays from "./pages/HeadClerkHolidays";
+
+// Principal pages
+import PrincipalDashboard from "./pages/PrincipalDashboard";
+import PrincipalAllPending from "./pages/PrincipalAllPending";
+import PrincipalHODPending from "./pages/PrincipalHODPending";
 
 // ---- helpers ----
 function getUser() {
@@ -64,7 +90,7 @@ export default function App() {
     <BrowserRouter>
       <Navbar />
       <Routes>
-        {/* Auth Routes - No protection needed */}
+        {/* Auth Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -73,306 +99,531 @@ export default function App() {
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* Shared Routes - All roles */}
-        <Route
-          path="/dashboard"
-          element={
-            <RequireAuth>
-              <FacultyDashboard />
-            </RequireAuth>
-          }
+        {/* ===== SHARED ROUTES (All authenticated users) ===== */}
+        <Route 
+          path="/dashboard" 
+          element={<RequireAuth><Dashboard /></RequireAuth>} 
         />
-        <Route
-          path="/request-leave"
-          element={
-            <RequireAuth>
-              <FacultyRequestLeave />
-            </RequireAuth>
-          }
+        <Route 
+          path="/request-leave" 
+          element={<RequireAuth><RequestLeave /></RequireAuth>} 
         />
-        <Route
-          path="/status"
-          element={
-            <RequireAuth>
-              <FacultyStatus />
-            </RequireAuth>
-          }
+        <Route 
+          path="/status" 
+          element={<RequireAuth><Status /></RequireAuth>} 
         />
-        <Route
-          path="/profile"
-          element={
-            <RequireAuth>
-              <FacultyProfile />
-            </RequireAuth>
-          }
+        <Route 
+          path="/profile" 
+          element={<RequireAuth><Profile /></RequireAuth>} 
         />
-        <Route
-          path="/history"
-          element={
-            <RequireAuth>
-              <History />
-            </RequireAuth>
-          }
+        <Route 
+          path="/history" 
+          element={<RequireAuth><History /></RequireAuth>} 
         />
-        <Route
-          path="/stats"
-          element={
-            <RequireAuth>
-              <Stats />
-            </RequireAuth>
-          }
+        <Route 
+          path="/stats" 
+          element={<RequireAuth><Stats /></RequireAuth>} 
         />
-        <Route
-          path="/vacation"
-          element={
-            <RequireAuth>
-              <FacultyVacation />
-            </RequireAuth>
-          }
+        <Route 
+          path="/vacation" 
+          element={<RequireAuth><Vacation /></RequireAuth>} 
         />
 
-        {/* HOD Routes */}
-        <Route
-          path="/hod-dashboard"
+        {/* ===== HOD ROUTES ===== */}
+        <Route 
+          path="/hod-dashboard" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
                 <HODDashboard />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/request-leave"
+        <Route 
+          path="/hod/request-leave" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
                 <HODRequestLeave />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/status"
+        <Route 
+          path="/hod/status" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
-                <FacultyStatus />
+                <Status />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/history"
+        <Route 
+          path="/hod/history" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
                 <History />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/stats"
+        <Route 
+          path="/hod/stats" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
                 <Stats />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/vacation"
+        <Route 
+          path="/hod/profile" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["hod"]}>
+                <Profile />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/hod/vacation" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
                 <HODVacation />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/hod/profile"
+
+        {/* HOD Admin Routes - Faculty Management */}
+        <Route 
+          path="/hod-admin/faculty-requests" 
           element={
             <RequireAuth>
               <RequireRole roles={["hod"]}>
-                <FacultyProfile />
+                <HODFacultyRequests />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
+        />
+        <Route 
+          path="/hod-admin/faculty-requests/:id" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["hod"]}>
+                <HODRequestDetails />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/hod-admin/faculty-list" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["hod"]}>
+                <HODFacultyList />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/hod-admin/add-faculty" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["hod"]}>
+                <HODAddFaculty />
+              </RequireRole>
+            </RequireAuth>
+          } 
         />
 
-        {/* Registry Routes */}
-        <Route
-          path="/registry-dashboard"
+        {/* ===== REGISTRY ROUTES ===== */}
+        <Route 
+          path="/registry-dashboard" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
                 <RegistryDashboard />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/request-leave"
+        <Route 
+          path="/registry/request-leave" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
                 <RegistryRequestLeave />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/status"
+        <Route 
+          path="/registry/status" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
-                <FacultyStatus />
+                <RegistryStatus />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/history"
+        <Route 
+          path="/registry/history" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
-                <History />
+                <RegistryHistory />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/stats"
+        <Route 
+          path="/registry/stats" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
-                <Stats />
+                <RegistryStats />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/vacation"
+        <Route 
+          path="/registry/profile" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["registry"]}>
+                <RegistryProfile />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/registry/vacation" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
                 <RegistryVacation />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/registry/profile"
+
+        {/* Registry Admin Routes - Staff Management */}
+        <Route 
+          path="/registry-admin/staff-requests" 
           element={
             <RequireAuth>
               <RequireRole roles={["registry"]}>
-                <FacultyProfile />
+                <RegistryStaffRequests />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
+        />
+        <Route 
+          path="/registry-admin/staff-requests/:id" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["registry"]}>
+                <RegistryRequestDetails />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/registry-admin/staff-list" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["registry"]}>
+                <RegistryStaffList />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/registry-admin/add-staff" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["registry"]}>
+                <RegistryAddStaff />
+              </RequireRole>
+            </RequireAuth>
+          } 
         />
 
-        {/* Office Staff Routes */}
-        <Route
-          path="/officestaff-dashboard"
+        {/* ===== OFFICE STAFF ROUTES ===== */}
+        <Route 
+          path="/officestaff-dashboard" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
                 <OfficeStaffDashboard />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/officestaff/request-leave"
+        <Route 
+          path="/officestaff/request-leave" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
                 <OfficeStaffRequestLeave />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/officestaff/status"
+        <Route 
+          path="/officestaff/status" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
-                <FacultyStatus />
+                <OfficeStaffStatus />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/officestaff/history"
+        <Route 
+          path="/officestaff/history" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
                 <OfficeStaffHistory />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/officestaff/stats"
+        <Route 
+          path="/officestaff/stats" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
                 <OfficeStaffStats />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
         />
-        <Route
-          path="/officestaff/vacation"
+        <Route 
+          path="/officestaff/profile" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["officestaff"]}>
+                <OfficeStaffProfile />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/officestaff/vacation" 
           element={
             <RequireAuth>
               <RequireRole roles={["officestaff"]}>
                 <OfficeStaffVacation />
               </RequireRole>
             </RequireAuth>
-          }
-        />
-        <Route
-          path="/officestaff/profile"
-          element={
-            <RequireAuth>
-              <RequireRole roles={["officestaff"]}>
-                <FacultyProfile />
-              </RequireRole>
-            </RequireAuth>
-          }
+          } 
         />
 
-        {/* Head Clerk Routes */}
-        <Route
-          path="/headclerk-dashboard"
+        {/* ===== HEAD CLERK ROUTES ===== */}
+        <Route 
+          path="/headclerk-dashboard" 
           element={
             <RequireAuth>
               <RequireRole roles={["headclerk"]}>
                 <HeadClerkDashboard />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
+        />
+        
+        {/* Attendance Routes */}
+        <Route 
+          path="/headclerk/attendance-calendar" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkAttendanceCalendar />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/attendance/calendar" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkAttendanceCalendar />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/mark-attendance" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkMarkAttendance />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/attendance/upload" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkUploadAttendance />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/upload-attendance" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkUploadAttendance />
+              </RequireRole>
+            </RequireAuth>
+          } 
         />
 
-        {/* Principal Routes */}
-        <Route
-          path="/principal-dashboard"
+        {/* Vacation Routes */}
+        <Route 
+          path="/headclerk/vacation-calendar" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkVacationCalendar />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/vacation/calendar" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkVacationCalendar />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/vacation-management" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkVacationManagement />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/vacation/manage" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkVacationManagement />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/summer-winter-management" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkSummerWinterManagement />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/vacation/summer-winter" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkSummerWinterManagement />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        
+        {/* Holidays & Profile */}
+        <Route 
+          path="/headclerk/holidays" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkHolidays />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/headclerk/profile" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <Profile />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+
+        {/* ===== PRINCIPAL ROUTES ===== */}
+        <Route 
+          path="/principal-dashboard" 
           element={
             <RequireAuth>
               <RequireRole roles={["principal"]}>
                 <PrincipalDashboard />
               </RequireRole>
             </RequireAuth>
-          }
+          } 
+        />
+        <Route 
+          path="/principal/all-pending" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["principal"]}>
+                <PrincipalAllPending />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/principal/hod-pending" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["principal"]}>
+                <PrincipalHODPending />
+              </RequireRole>
+            </RequireAuth>
+          } 
+        />
+        <Route 
+          path="/principal/profile" 
+          element={
+            <RequireAuth>
+              <RequireRole roles={["principal"]}>
+                <Profile />
+              </RequireRole>
+            </RequireAuth>
+          } 
         />
 
-        {/* 404 */}
-        <Route path="*" element={<div className="p-6">Page not found</div>} />
+        {/* 404 - Page Not Found */}
+        <Route 
+          path="*" 
+          element={<div className="p-6 text-center text-lg">Page not found</div>} 
+        />
       </Routes>
     </BrowserRouter>
   );

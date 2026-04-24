@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { db } = require("../database/init");
 const { authenticateToken } = require("../middleware/auth");
 require("dotenv").config();
@@ -81,6 +82,11 @@ router.post("/login", (req, res) => {
     const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
+    // CHECK FOR DELETED ACCOUNT - THIS IS THE IMPORTANT PART
+    if (user.deleted_at) {
+      return res.status(401).json({ message: "Account has been deleted. Please restore your account first." });
+    }
+
     if (!user.password_hash) {
       console.error("LOGIN ERROR: password_hash missing for user:", username);
       return res.status(500).json({ message: "Internal Server Error" });
@@ -124,6 +130,91 @@ router.get("/me", authenticateToken, (req, res) => {
     return res.json(user);
   } catch (error) {
     console.error("ME ERROR:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// POST /api/forgot-password
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = db.prepare("SELECT username, email, full_name FROM users WHERE email = ?").get(email);
+    
+    // Always return success for security (don't reveal if email exists)
+    if (!user) {
+      return res.json({ message: "If your email is registered, you will receive reset instructions." });
+    }
+
+    // Generate secure random token
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiry
+
+    // Delete any existing unused tokens for this user
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_username = ? AND used = 0").run(user.username);
+
+    // Store new token
+    db.prepare(`
+      INSERT INTO password_reset_tokens (user_username, token, expires_at)
+      VALUES (?, ?, ?)
+    `).run(user.username, token, expiresAt.toISOString());
+
+    // Send email (you'll need to implement this or use existing emailService)
+    const resetLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${token}`;
+    
+    // You can use your existing email service here
+    console.log("Password reset link:", resetLink);
+    // await sendPasswordResetEmail(user, resetLink);
+
+    return res.json({ message: "If your email is registered, you will receive reset instructions." });
+  } catch (error) {
+    console.error("FORGOT PASSWORD ERROR:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// POST /api/reset-password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, new_password, confirm_password } = req.body;
+
+    if (!token || !new_password || !confirm_password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Find valid token
+    const resetEntry = db.prepare(`
+      SELECT * FROM password_reset_tokens 
+      WHERE token = ? AND used = 0 AND expires_at > datetime('now')
+    `).get(token);
+
+    if (!resetEntry) {
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    // Hash new password
+    const hashedPassword = bcrypt.hashSync(new_password, 10);
+
+    // Update user's password
+    db.prepare("UPDATE users SET password_hash = ? WHERE username = ?").run(hashedPassword, resetEntry.user_username);
+
+    // Mark token as used
+    db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(resetEntry.id);
+
+    return res.json({ message: "Password reset successful. Please login with your new password." });
+  } catch (error) {
+    console.error("RESET PASSWORD ERROR:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });

@@ -22,7 +22,7 @@ function ensureOfficeStaffUser(username) {
   `).get(username);
 }
 
-// 1) dashboard stats
+// ========== 1) dashboard stats ==========
 router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -31,7 +31,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
     const total_staff = db.prepare(`
       SELECT COUNT(*) AS c
       FROM users
-      WHERE role = 'officestaff' AND department = 'Office'
+      WHERE role = 'officestaff' AND department = 'Office' AND deleted_at IS NULL
     `).get().c;
 
     const pending_staff_leaves = db.prepare(`
@@ -40,6 +40,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get().c;
@@ -50,6 +51,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Approved'
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get().c;
@@ -60,6 +62,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Rejected'
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get().c;
@@ -70,6 +73,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
@@ -85,6 +89,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get();
@@ -105,7 +110,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
   }
 });
 
-// 2) pending staff requests
+// ========== 2) pending staff requests ==========
 router.get("/registry/staff-requests", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -118,6 +123,7 @@ router.get("/registry/staff-requests", authenticateToken, authorizeRoles("regist
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
+        AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
@@ -130,7 +136,7 @@ router.get("/registry/staff-requests", authenticateToken, authorizeRoles("regist
   }
 });
 
-// 3) request details
+// ========== 3) request details ==========
 router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -143,7 +149,7 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
              u.medical_leave_left, u.casual_leave_left, u.earned_leave_left
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id = ? AND u.role = 'officestaff'
+      WHERE lr.id = ? AND u.role = 'officestaff' AND u.deleted_at IS NULL
     `).get(id);
 
     if (!request) return res.status(404).json({ message: "Request not found" });
@@ -182,7 +188,7 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
   }
 });
 
-// 4) approve + forward
+// ========== 4) approve + forward ==========
 router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -222,7 +228,7 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
   }
 });
 
-// 5) reject
+// ========== 5) reject ==========
 router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -265,7 +271,7 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
   }
 });
 
-// 6) staff list
+// ========== 6) staff list ==========
 router.get("/registry/staff-list", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -278,7 +284,7 @@ router.get("/registry/staff-list", authenticateToken, authorizeRoles("registry")
         (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Approved') AS approved_count,
         (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Pending') AS pending_count
       FROM users u
-      WHERE u.role = 'officestaff' AND u.department = 'Office'
+      WHERE u.role = 'officestaff' AND u.department = 'Office' AND u.deleted_at IS NULL
       ORDER BY u.full_name ASC
     `).all();
 
@@ -289,7 +295,7 @@ router.get("/registry/staff-list", authenticateToken, authorizeRoles("registry")
   }
 });
 
-// 7) add staff
+// ========== 7) add staff ==========
 router.post("/registry/add-staff", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -351,7 +357,7 @@ router.post("/registry/add-staff", authenticateToken, authorizeRoles("registry")
   }
 });
 
-// 8) reset password
+// ========== 8) reset password ==========
 router.post("/registry/reset-password/:username", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -373,31 +379,170 @@ router.post("/registry/reset-password/:username", authenticateToken, authorizeRo
   }
 });
 
-// 9) hard delete staff
+// ========== 9) DELETE /api/registry/delete-staff/:username (SOFT DELETE) ==========
 router.delete("/registry/delete-staff/:username", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
     if (!reg) return;
 
-    const target = ensureOfficeStaffUser(req.params.username);
+    const targetUsername = req.params.username;
+    
+    // PREVENT SELF-DELETE
+    if (targetUsername === req.user.username) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+    
+    const target = db.prepare(`
+      SELECT username, role, department, deleted_at
+      FROM users
+      WHERE username = ?
+    `).get(targetUsername);
+    
     if (!target) return res.status(404).json({ message: "Staff not found" });
     if (target.role !== "officestaff" || target.department !== "Office") {
       return res.status(403).json({ message: "Forbidden: Can delete only Office Staff" });
     }
+    
+    if (target.deleted_at) {
+      return res.status(400).json({ message: "Staff already deleted" });
+    }
 
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM leave_conversions WHERE leave_request_id IN (SELECT id FROM leave_requests WHERE user_username = ?)").run(target.username);
-      db.prepare("DELETE FROM leave_conversions WHERE extra_work_day_id IN (SELECT id FROM extra_work_days WHERE user_username = ?)").run(target.username);
-      db.prepare("DELETE FROM leave_requests WHERE user_username = ?").run(target.username);
-      db.prepare("DELETE FROM extra_work_days WHERE user_username = ?").run(target.username);
-      db.prepare("DELETE FROM attendance WHERE user_username = ?").run(target.username);
-      db.prepare("DELETE FROM users WHERE username = ?").run(target.username);
+    // SOFT DELETE
+    db.prepare(`
+      UPDATE users
+      SET deleted_at = CURRENT_TIMESTAMP,
+          deleted_by = ?
+      WHERE username = ?
+    `).run(req.user.username, targetUsername);
+
+    res.json({ 
+      message: `Staff ${targetUsername} soft deleted successfully. They can be restored within 30 days.`,
+      deleted_at: new Date().toISOString(),
+      deleted_by: req.user.username
     });
-    tx();
-
-    return res.json({ message: `Staff ${target.username} deleted successfully` });
   } catch (e) {
     console.error("REGISTRY delete-staff error:", e);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// ========== 10) POST /api/registry/restore-staff/:username ==========
+router.post("/registry/restore-staff/:username", authenticateToken, authorizeRoles("registry"), (req, res) => {
+  try {
+    const reg = ensureRegistry(req, res);
+    if (!reg) return;
+
+    const targetUsername = req.params.username;
+    
+    const target = db.prepare(`
+      SELECT username, role, department, deleted_at
+      FROM users
+      WHERE username = ?
+    `).get(targetUsername);
+    
+    if (!target) return res.status(404).json({ message: "Staff not found" });
+    if (target.role !== "officestaff" || target.department !== "Office") {
+      return res.status(403).json({ message: "Forbidden: Can restore only Office Staff" });
+    }
+    
+    if (!target.deleted_at) {
+      return res.status(400).json({ message: "Staff is not deleted" });
+    }
+    
+    // Check 30-day window
+    const deletedDate = new Date(target.deleted_at);
+    const now = new Date();
+    const daysDeleted = Math.floor((now - deletedDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDeleted > 30) {
+      return res.status(400).json({ 
+        message: `Cannot restore: ${daysDeleted} days have passed. Maximum restore window is 30 days.`,
+        days_passed: daysDeleted
+      });
+    }
+
+    // RESTORE
+    db.prepare(`
+      UPDATE users
+      SET deleted_at = NULL,
+          deleted_by = NULL,
+          restored_at = CURRENT_TIMESTAMP,
+          restored_by = ?
+      WHERE username = ?
+    `).run(req.user.username, targetUsername);
+
+    res.json({ 
+      message: `Staff ${targetUsername} restored successfully.`,
+      restored_at: new Date().toISOString(),
+      restored_by: req.user.username
+    });
+  } catch (e) {
+    console.error("REGISTRY restore-staff error:", e);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// ========== 11) GET /api/registry/deleted-staff-history ==========
+router.get("/registry/deleted-staff-history", authenticateToken, authorizeRoles("registry"), (req, res) => {
+  try {
+    const reg = ensureRegistry(req, res);
+    if (!reg) return;
+
+    const deletedStaff = db.prepare(`
+      SELECT 
+        u.username,
+        u.full_name,
+        u.email,
+        u.department,
+        u.designation,
+        u.deleted_at,
+        u.deleted_by,
+        u.restored_at,
+        u.restored_by,
+        d.full_name as deleted_by_name,
+        r.full_name as restored_by_name
+      FROM users u
+      LEFT JOIN users d ON d.username = u.deleted_by
+      LEFT JOIN users r ON r.username = u.restored_by
+      WHERE u.role = 'officestaff'
+        AND u.department = 'Office'
+        AND u.deleted_at IS NOT NULL
+      ORDER BY u.deleted_at DESC
+    `).all();
+
+    // Get leave history for each deleted staff
+    const result = deletedStaff.map(staff => {
+      const leaveHistory = db.prepare(`
+        SELECT 
+          lr.id,
+          lr.start_date,
+          lr.end_date,
+          lr.duration_days,
+          lr.reason,
+          lr.status,
+          lr.leave_category,
+          lr.leave_type,
+          lr.created_at,
+          lr.approved_at
+        FROM leave_requests lr
+        WHERE lr.user_username = ?
+        ORDER BY lr.created_at DESC
+      `).all(staff.username);
+
+      return {
+        ...staff,
+        leave_history: leaveHistory,
+        total_leaves_taken: leaveHistory.length,
+        total_days_consumed: leaveHistory.reduce((sum, l) => sum + (l.duration_days || 0), 0)
+      };
+    });
+
+    res.json({
+      deleted_count: result.length,
+      deleted_staff: result
+    });
+  } catch (e) {
+    console.error("REGISTRY deleted-staff-history error:", e);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
