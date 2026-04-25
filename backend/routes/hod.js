@@ -457,7 +457,6 @@ router.delete("/hod/delete-faculty/:username", authenticateToken, authorizeRoles
 
     const targetUsername = req.params.username;
     
-    // PREVENT SELF-DELETE
     if (targetUsername === req.user.username) {
       return res.status(400).json({ message: "You cannot delete your own account" });
     }
@@ -474,12 +473,10 @@ router.delete("/hod/delete-faculty/:username", authenticateToken, authorizeRoles
       return res.status(403).json({ message: "Forbidden: Different department" });
     }
     
-    // Check if already deleted
     if (faculty.deleted_at) {
       return res.status(400).json({ message: "Faculty already deleted" });
     }
 
-    // SOFT DELETE - just mark deleted_at and deleted_by
     db.prepare(`
       UPDATE users
       SET deleted_at = CURRENT_TIMESTAMP,
@@ -522,7 +519,6 @@ router.post("/hod/restore-faculty/:username", authenticateToken, authorizeRoles(
       return res.status(400).json({ message: "Faculty is not deleted" });
     }
     
-    // Check 30-day window
     const deletedDate = new Date(faculty.deleted_at);
     const now = new Date();
     const daysDeleted = Math.floor((now - deletedDate) / (1000 * 60 * 60 * 24));
@@ -534,7 +530,6 @@ router.post("/hod/restore-faculty/:username", authenticateToken, authorizeRoles(
       });
     }
 
-    // RESTORE - clear deleted_at and set restored info
     db.prepare(`
       UPDATE users
       SET deleted_at = NULL,
@@ -562,7 +557,6 @@ router.get("/hod/deleted-faculty-history", authenticateToken, authorizeRoles("ho
     const hodDepartment = ensureHod(req, res);
     if (!hodDepartment) return;
 
-    // Get all deleted faculty in this department
     const deletedFaculty = db.prepare(`
       SELECT 
         u.username,
@@ -585,7 +579,6 @@ router.get("/hod/deleted-faculty-history", authenticateToken, authorizeRoles("ho
       ORDER BY u.deleted_at DESC
     `).all(hodDepartment);
 
-    // For each deleted faculty, get their leave history
     const result = deletedFaculty.map(faculty => {
       const leaveHistory = db.prepare(`
         SELECT 

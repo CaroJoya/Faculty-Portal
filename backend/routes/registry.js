@@ -387,7 +387,6 @@ router.delete("/registry/delete-staff/:username", authenticateToken, authorizeRo
 
     const targetUsername = req.params.username;
     
-    // PREVENT SELF-DELETE
     if (targetUsername === req.user.username) {
       return res.status(400).json({ message: "You cannot delete your own account" });
     }
@@ -407,7 +406,6 @@ router.delete("/registry/delete-staff/:username", authenticateToken, authorizeRo
       return res.status(400).json({ message: "Staff already deleted" });
     }
 
-    // SOFT DELETE
     db.prepare(`
       UPDATE users
       SET deleted_at = CURRENT_TIMESTAMP,
@@ -449,7 +447,6 @@ router.post("/registry/restore-staff/:username", authenticateToken, authorizeRol
       return res.status(400).json({ message: "Staff is not deleted" });
     }
     
-    // Check 30-day window
     const deletedDate = new Date(target.deleted_at);
     const now = new Date();
     const daysDeleted = Math.floor((now - deletedDate) / (1000 * 60 * 60 * 24));
@@ -461,7 +458,6 @@ router.post("/registry/restore-staff/:username", authenticateToken, authorizeRol
       });
     }
 
-    // RESTORE
     db.prepare(`
       UPDATE users
       SET deleted_at = NULL,
@@ -510,7 +506,6 @@ router.get("/registry/deleted-staff-history", authenticateToken, authorizeRoles(
       ORDER BY u.deleted_at DESC
     `).all();
 
-    // Get leave history for each deleted staff
     const result = deletedStaff.map(staff => {
       const leaveHistory = db.prepare(`
         SELECT 

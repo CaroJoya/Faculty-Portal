@@ -53,20 +53,18 @@ router.post(
 
       const attachment_path = req.file ? `/uploads/${req.file.filename}` : null;
 
-      // OD letter is uploaded by user (mandatory for OD)
       if ((special_leave_type || "").toLowerCase() === "od" && !attachment_path) {
         return res.status(400).json({ message: "OD letter upload is required for OD leave request" });
       }
 
-      // NEW: Extract recommendations if present (faculty only)
       let finalReason = reason;
-      let recommendations = [];
-
-      if (req.body.recommendations) {
+      
+      // Only faculty can have recommendations
+      const userRole = req.user.role;
+      if (userRole === "faculty" && req.body.recommendations) {
         try {
-          recommendations = JSON.parse(req.body.recommendations);
+          const recommendations = JSON.parse(req.body.recommendations);
           if (Array.isArray(recommendations) && recommendations.length > 0) {
-            // Filter out empty strings and limit to 3
             const validRecs = recommendations.filter(r => r && typeof r === "string" && r.trim() !== "").slice(0, 3);
             if (validRecs.length > 0) {
               const recsText = validRecs.map(r => `• ${r.trim()}`).join("\n");
@@ -74,7 +72,6 @@ router.post(
             }
           }
         } catch (e) {
-          // If JSON parsing fails, ignore recommendations
           console.error("Failed to parse recommendations:", e);
         }
       }
@@ -92,7 +89,7 @@ router.post(
         start_date,
         end_date,
         duration_days,
-        finalReason,  // Use modified reason with recommendations
+        finalReason,
         leave_type,
         leave_category,
         special_leave_type,

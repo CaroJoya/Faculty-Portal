@@ -40,7 +40,7 @@ function autoConvertIfEligible(username) {
 
   const units = Math.floor(pending / CONVERSION_HOURS_PER_LEAVE);
   const hoursUsed = units * CONVERSION_HOURS_PER_LEAVE;
-  const earnedDays = units; // 1 leave day per conversion unit
+  const earnedDays = units;
 
   const tx = db.transaction(() => {
     db.prepare(`
@@ -94,7 +94,6 @@ router.post("/overwork/add", authenticateToken, uploader.single("attachment"), (
       VALUES (?, ?, ?, ?, ?, ?, 'approved', CURRENT_TIMESTAMP)
     `).run(req.user.username, work_date, reason, h, h, attachmentPath);
 
-    // track totals
     db.prepare(`
       UPDATE users
       SET

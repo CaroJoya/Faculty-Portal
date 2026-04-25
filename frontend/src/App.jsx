@@ -48,21 +48,18 @@ import OfficeStaffHistory from "./pages/OfficeStaffHistory";
 import OfficeStaffStats from "./pages/OfficeStaffStats";
 import OfficeStaffVacation from "./pages/OfficeStaffVacation";
 
-// Head Clerk pages
+// Head Clerk pages (removed: UploadAttendance, Holidays)
 import HeadClerkDashboard from "./pages/HeadClerkDashboard";
 import HeadClerkAttendanceCalendar from "./pages/HeadClerkAttendanceCalendar";
 import HeadClerkMarkAttendance from "./pages/HeadClerkMarkAttendance";
-import HeadClerkUploadAttendance from "./pages/HeadClerkUploadAttendance";
 import HeadClerkVacationCalendar from "./pages/HeadClerkVacationCalendar";
-import HeadClerkVacationManagement from "./pages/HeadClerkVacationManagement";
 import HeadClerkSummerWinterManagement from "./pages/HeadClerkSummerWinterManagement";
-import HeadClerkHolidays from "./pages/HeadClerkHolidays";
 
 // Principal pages
 import PrincipalDashboard from "./pages/PrincipalDashboard";
 import PrincipalAllPending from "./pages/PrincipalAllPending";
 import PrincipalHODPending from "./pages/PrincipalHODPending";
-import PrincipalLayout from "./layouts/PrincipalLayout"; // Import the layout
+import PrincipalLayout from "./layouts/PrincipalLayout";
 
 // ---- helpers ----
 function getUser() {
@@ -432,7 +429,7 @@ export default function App() {
               } 
             />
 
-            {/* ===== HEAD CLERK ROUTES ===== */}
+            {/* ===== HEAD CLERK ROUTES (Removed: upload-attendance, holidays, vacation-7day) ===== */}
             <Route 
               path="/headclerk-dashboard" 
               element={
@@ -475,28 +472,8 @@ export default function App() {
                 </RequireAuth>
               } 
             />
-            <Route 
-              path="/headclerk/attendance/upload" 
-              element={
-                <RequireAuth>
-                  <RequireRole roles={["headclerk"]}>
-                    <HeadClerkUploadAttendance />
-                  </RequireRole>
-                </RequireAuth>
-              } 
-            />
-            <Route 
-              path="/headclerk/upload-attendance" 
-              element={
-                <RequireAuth>
-                  <RequireRole roles={["headclerk"]}>
-                    <HeadClerkUploadAttendance />
-                  </RequireRole>
-                </RequireAuth>
-              } 
-            />
 
-            {/* Vacation Routes */}
+            {/* Vacation Routes - only Summer/Winter */}
             <Route 
               path="/headclerk/vacation-calendar" 
               element={
@@ -513,26 +490,6 @@ export default function App() {
                 <RequireAuth>
                   <RequireRole roles={["headclerk"]}>
                     <HeadClerkVacationCalendar />
-                  </RequireRole>
-                </RequireAuth>
-              } 
-            />
-            <Route 
-              path="/headclerk/vacation-management" 
-              element={
-                <RequireAuth>
-                  <RequireRole roles={["headclerk"]}>
-                    <HeadClerkVacationManagement />
-                  </RequireRole>
-                </RequireAuth>
-              } 
-            />
-            <Route 
-              path="/headclerk/vacation/manage" 
-              element={
-                <RequireAuth>
-                  <RequireRole roles={["headclerk"]}>
-                    <HeadClerkVacationManagement />
                   </RequireRole>
                 </RequireAuth>
               } 
@@ -558,17 +515,7 @@ export default function App() {
               } 
             />
             
-            {/* Holidays & Profile */}
-            <Route 
-              path="/headclerk/holidays" 
-              element={
-                <RequireAuth>
-                  <RequireRole roles={["headclerk"]}>
-                    <HeadClerkHolidays />
-                  </RequireRole>
-                </RequireAuth>
-              } 
-            />
+            {/* Profile */}
             <Route 
               path="/headclerk/profile" 
               element={
@@ -580,7 +527,7 @@ export default function App() {
               } 
             />
 
-            {/* ===== PRINCIPAL ROUTES (UPDATED WITH LAYOUT) ===== */}
+            {/* ===== PRINCIPAL ROUTES ===== */}
             <Route 
               path="/principal-dashboard" 
               element={

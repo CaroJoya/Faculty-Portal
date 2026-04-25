@@ -12,8 +12,6 @@ import {
   ClipboardList,
   UserPlus,
   CalendarDays,
-  CalendarCheck2,
-  Upload,
   Sun,
   Menu,
   X,
@@ -40,7 +38,6 @@ export default function Navbar() {
 
   const role = user?.role;
 
-  // Handle scroll effect
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 10);
@@ -95,14 +92,12 @@ export default function Navbar() {
     { to: "/profile", label: "Profile", icon: User }
   ];
 
+  // Head Clerk - removed Holidays, Upload Attendance, Vacation-7 Days
   const headClerkLinks = [
     { to: "/headclerk-dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/headclerk/attendance/calendar", label: "Attendance Calendar", icon: CalendarCheck2 },
-    { to: "/headclerk/attendance/upload", label: "Upload Attendance", icon: Upload },
-    { to: "/headclerk/vacation/manage", label: "Vacation (7-day)", icon: CalendarDays },
+    { to: "/headclerk/attendance/calendar", label: "Attendance Calendar", icon: CalendarDays },
     { to: "/headclerk/vacation/summer-winter", label: "Summer/Winter (40-day)", icon: Sun },
     { to: "/headclerk/vacation/calendar", label: "Vacation Calendar", icon: CalendarDays },
-    { to: "/headclerk/holidays", label: "Holidays", icon: ClipboardList },
     { to: "/profile", label: "My Profile", icon: User }
   ];
 
@@ -249,7 +244,7 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-900 shadow-2xl p-4 animate-slide-in">
+          <div className="fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-900 shadow-2xl p-4">
             <div className="flex flex-col h-full">
               <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-gray-800">
                 <div>

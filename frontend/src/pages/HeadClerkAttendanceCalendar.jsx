@@ -1,8 +1,7 @@
-// frontend/src/pages/HeadClerkAttendanceCalendar.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
 import HeadClerkMarkAttendance from "./HeadClerkMarkAttendance";
-import { ChevronLeft, ChevronRight, Search, Download, Filter, User, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Download } from "lucide-react";
 
 function getDaysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
@@ -100,9 +99,140 @@ export default function HeadClerkAttendanceCalendar() {
     else setMonth(m => m + 1);
   };
 
-  const exportToCSV = () => {
-    const headers = ["Date", "Present", "Absent", "Half Day", "On Leave"];
-    const data = [];
+  const exportToPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("Please allow pop-ups to download PDF");
+      return;
+    }
+    
+    const monthName = new Date(year, month - 1).toLocaleString("default", { month: "long" });
+    const title = `Attendance Calendar - ${monthName} ${year}`;
+    
+    let calendarHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${title}</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background: white;
+          }
+          h1 {
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 30px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th, td {
+            border: 1px solid #cbd5e1;
+            padding: 12px 8px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            color: #1e293b;
+          }
+          .status-present {
+            background-color: #dcfce7;
+            color: #166534;
+          }
+          .status-absent {
+            background-color: #fee2e2;
+            color: #991b1b;
+          }
+          .status-half {
+            background-color: #fef3c7;
+            color: #92400e;
+          }
+          .status-leave {
+            background-color: #dbeafe;
+            color: #1e40af;
+          }
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 10px;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 15px;
+          }
+          @media print {
+            body { margin: 0; padding: 10px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <div class="subtitle">Generated on ${new Date().toLocaleString()}</div>
+    `;
+    
+    // Faculty table
+    calendarHTML += `
+      <h3 style="margin-top: 20px;">Faculty Attendance Records</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Faculty Name</th>
+            <th>Department</th>
+            <th>Role</th>
+            <th>Medical Leave</th>
+            <th>Casual Leave</th>
+            <th>Earned Leave</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    for (const faculty of facultyList.slice(0, 20)) {
+      calendarHTML += `
+          <tr>
+            <td>${faculty.full_name}</td>
+            <td>${faculty.department || '-'}</td>
+            <td>${faculty.role}</td>
+            <td>${faculty.medical_leave_left || 0}</td>
+            <td>${faculty.casual_leave_left || 0}</td>
+            <td>${faculty.earned_leave_left || 0}</td>
+          </tr>
+      `;
+    }
+    
+    calendarHTML += `
+        </tbody>
+      </table>
+    `;
+    
+    // Attendance summary
+    calendarHTML += `
+      <h3 style="margin-top: 30px;">Attendance Summary for ${monthName} ${year}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Present</th>
+            <th>Absent</th>
+            <th>Half Day</th>
+            <th>On Leave</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
     
     for (let day = 1; day <= days; day++) {
       const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -123,26 +253,30 @@ export default function HeadClerkAttendanceCalendar() {
         else if (att?.status === "Half Day") halfDay++;
       }
       
-      data.push([date, present, absent, halfDay, onLeave]);
+      calendarHTML += `
+          <tr>
+            <td>${date}</td>
+            <td>${present}</td>
+            <td>${absent}</td>
+            <td>${halfDay}</td>
+            <td>${onLeave}</td>
+          </tr>
+      `;
     }
     
-    const csvContent = [headers, ...data].map(row => row.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `attendance_${year}_${month}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      Present: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-      Absent: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
-      "Half Day": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-    };
-    return colors[status] || "bg-gray-100 text-gray-700";
+    calendarHTML += `
+        </tbody>
+      </table>
+      <div class="footer">
+        This report is generated automatically by the Faculty Leave Portal. For queries, contact the Head Clerk.
+      </div>
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(calendarHTML);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const getAttendanceSummary = () => {
@@ -160,9 +294,18 @@ export default function HeadClerkAttendanceCalendar() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">Attendance Calendar</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">View and manage faculty attendance records</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">Attendance Calendar</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">View and manage faculty attendance records</p>
+        </div>
+        <button
+          onClick={exportToPDF}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white transition-all"
+        >
+          <Download size={16} />
+          Download as PDF
+        </button>
       </div>
 
       {/* Summary Stats */}
@@ -183,7 +326,7 @@ export default function HeadClerkAttendanceCalendar() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-5">
-        <div className="grid md:grid-cols-4 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Faculty Search</label>
             <div className="relative">
@@ -219,33 +362,18 @@ export default function HeadClerkAttendanceCalendar() {
               ))}
             </select>
           </div>
-          <div className="flex items-end gap-2">
-            <button
-              onClick={exportToCSV}
-              className="flex-1 bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              <Download size={16} />
-              Export CSV
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Month Navigation */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={prevMonth}
-          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-gray-800 transition-all"
-        >
+        <button onClick={prevMonth} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-gray-800 transition-all">
           <ChevronLeft size={20} />
         </button>
         <h2 className="text-xl font-semibold text-slate-800 dark:text-white">
           {new Date(year, month - 1).toLocaleString("default", { month: "long" })} {year}
         </h2>
-        <button
-          onClick={nextMonth}
-          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-gray-800 transition-all"
-        >
+        <button onClick={nextMonth} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-gray-800 transition-all">
           <ChevronRight size={20} />
         </button>
       </div>
@@ -257,7 +385,6 @@ export default function HeadClerkAttendanceCalendar() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
-          {/* Calendar Header */}
           <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-gray-700">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
               <div key={day} className="p-3 text-center text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-gray-900/50">
@@ -265,26 +392,32 @@ export default function HeadClerkAttendanceCalendar() {
               </div>
             ))}
           </div>
-
-          {/* Calendar Body */}
           <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-gray-700">
-            {/* Empty cells for days before month starts */}
             {Array.from({ length: emptyDays }).map((_, i) => (
               <div key={`empty-${i}`} className="min-h-[100px] bg-slate-50 dark:bg-gray-900/50 p-2" />
             ))}
-            
-            {/* Actual days */}
             {Array.from({ length: days }, (_, i) => i + 1).map((day) => {
               const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const a = attByDate.get(date);
               const hasLeave = leaveByDate.has(date);
               const isToday = ymd(new Date()) === date;
               
-              let statusIndicator = null;
-              if (a?.status === "Present") statusIndicator = { color: "emerald", text: "✓" };
-              else if (a?.status === "Absent") statusIndicator = { color: "rose", text: "✗" };
-              else if (a?.status === "Half Day") statusIndicator = { color: "amber", text: "½" };
-              else if (hasLeave) statusIndicator = { color: "blue", text: "L" };
+              let statusClass = "";
+              let statusText = "";
+              
+              if (a?.status === "Present") {
+                statusClass = "bg-emerald-50 dark:bg-emerald-950/20";
+                statusText = "✓ Present";
+              } else if (a?.status === "Absent") {
+                statusClass = "bg-rose-50 dark:bg-rose-950/20";
+                statusText = "✗ Absent";
+              } else if (a?.status === "Half Day") {
+                statusClass = "bg-amber-50 dark:bg-amber-950/20";
+                statusText = "½ Half Day";
+              } else if (hasLeave) {
+                statusClass = "bg-blue-50 dark:bg-blue-950/20";
+                statusText = "L Leave";
+              }
               
               return (
                 <button
@@ -292,14 +425,14 @@ export default function HeadClerkAttendanceCalendar() {
                   onClick={() => onDayClick(day)}
                   className={`min-h-[100px] p-2 text-left transition-all hover:bg-slate-100 dark:hover:bg-gray-800 ${
                     isToday ? "ring-2 ring-brand-500 ring-inset" : ""
-                  } ${statusIndicator ? `bg-${statusIndicator.color}-50 dark:bg-${statusIndicator.color}-950/20` : "bg-white dark:bg-gray-800"}`}
+                  } ${statusClass || "bg-white dark:bg-gray-800"}`}
                 >
                   <span className={`text-sm font-medium ${isToday ? "text-brand-600 dark:text-brand-400" : "text-slate-700 dark:text-slate-300"}`}>
                     {day}
                   </span>
-                  {statusIndicator && (
-                    <div className={`mt-1 text-xs font-medium text-${statusIndicator.color}-600 dark:text-${statusIndicator.color}-400`}>
-                      {statusIndicator.text} {a?.status === "Present" ? "Present" : a?.status === "Absent" ? "Absent" : a?.status === "Half Day" ? "Half Day" : hasLeave ? "Leave" : ""}
+                  {statusText && (
+                    <div className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+                      {statusText}
                     </div>
                   )}
                 </button>
@@ -331,13 +464,13 @@ export default function HeadClerkAttendanceCalendar() {
                   <td className="p-4">
                     <p className="font-medium text-slate-800 dark:text-white">{f.full_name}</p>
                     <p className="text-xs text-slate-400">{f.username}</p>
-                   </td>
+                  </td>
                   <td className="p-4 text-slate-600 dark:text-slate-400">{f.department || "-"}</td>
                   <td className="p-4">
                     <span className="capitalize px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-gray-700">
                       {f.role}
                     </span>
-                   </td>
+                  </td>
                   <td className="p-4">
                     <button
                       onClick={() => {
@@ -348,11 +481,11 @@ export default function HeadClerkAttendanceCalendar() {
                     >
                       View Attendance
                     </button>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ))}
             </tbody>
-           </table>
+          </table>
         </div>
       </div>
 
