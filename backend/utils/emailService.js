@@ -175,6 +175,7 @@ async function sendCompensationNotification(conversion, action, comments, recipi
   return sendEmail(recipientEmail, subject, html);
 }
 
+
 // Add this function to emailService.js
 function buildPasswordResetTemplate(user, resetLink) {
   return `

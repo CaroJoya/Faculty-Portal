@@ -1,6 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { 
+  Calendar, 
+  FileText, 
+  Clock, 
+  TrendingUp, 
+  CheckCircle, 
+  XCircle, 
+  AlertCircle,
+  Activity,
+  Sun,
+  BarChart3,
+  User,
+  History as HistoryIcon,
+  ListChecks,
+  Award
+} from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -10,7 +26,6 @@ export default function Dashboard() {
   const [pending, setPending] = useState(0);
   const [approved, setApproved] = useState(0);
   const [rejected, setRejected] = useState(0);
-  const [overworkHistory, setOverworkHistory] = useState([]);
   const [overworkSummary, setOverworkSummary] = useState({
     pending_hours: 0,
     converted_hours: 0,
@@ -29,14 +44,14 @@ export default function Dashboard() {
     setError(null);
     
     try {
-      // Get user profile first
+      // Get user profile
       const userRes = await axios.get(`${API}/me`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       const userData = userRes.data;
       setMe(userData);
       
-      // Update localStorage user data if needed
+      // Update localStorage
       const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
       if (storedUser.username !== userData.username) {
         localStorage.setItem("user", JSON.stringify({
@@ -55,12 +70,12 @@ export default function Dashboard() {
       setApproved(statusRes.data.approved || 0);
       setRejected(statusRes.data.rejected || 0);
       
-      // Get leave requests for recent activities
+      // Get recent leaves
       const leaveRes = await axios.get(`${API}/leave-requests`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       const leaves = leaveRes.data || [];
-      setRecentLeaves(leaves.slice(0, 3));
+      setRecentLeaves(leaves.slice(0, 5));
       
       // Get overwork data
       try {
@@ -68,31 +83,26 @@ export default function Dashboard() {
           headers: { Authorization: `Bearer ${token}` } 
         });
         if (overworkRes.data) {
-          const summary = overworkRes.data;
           setOverworkSummary({
-            pending_hours: summary.pending_hours || 0,
+            pending_hours: overworkRes.data.pending_hours || 0,
             converted_hours: 0,
             earned_leaves: userData.earned_leave_left || 0,
-            conversion_rate: summary.conversion_hours_per_leave || 5
+            conversion_rate: overworkRes.data.conversion_hours_per_leave || 5
           });
-          setOverworkHistory(summary.history || []);
         }
       } catch (overworkErr) {
-        console.log("Overwork data not available:", overworkErr.message);
-        // Set default overwork summary
-        setOverworkSummary({
-          pending_hours: 0,
-          converted_hours: 0,
-          earned_leaves: userData.earned_leave_left || 0,
-          conversion_rate: 5
-        });
+        console.log("Overwork data not available");
+        setOverworkSummary(prev => ({
+          ...prev,
+          earned_leaves: userData.earned_leave_left || 0
+        }));
       }
       
     } catch (err) {
       console.error("Failed to load dashboard data", err);
       setError(err?.response?.data?.message || "Failed to load dashboard data");
       
-      // Try to use localStorage as fallback
+      // Fallback to localStorage
       const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
       if (storedUser && storedUser.username) {
         setMe({
@@ -174,40 +184,40 @@ export default function Dashboard() {
   const totalLeavesAvailable = me ? ((me.medical_leave_left || 0) + (me.casual_leave_left || 0) + (me.earned_leave_left || 0)) : 0;
   const progressPercentage = Math.min(100, (overworkSummary.pending_hours / overworkSummary.conversion_rate) * 100);
   const needsMoreHours = overworkSummary.pending_hours < overworkSummary.conversion_rate;
-  
-  // Show loading state
+
   if (isLoading) {
     return (
-      <div className="p-8 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-brand-600 border-t-transparent"></div>
-        <p className="mt-3 text-slate-500">Loading dashboard...</p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-600 border-t-transparent"></div>
+          <p className="mt-4 text-slate-500 dark:text-slate-400">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
   
-  // Show error state
   if (error && !me) {
     return (
-      <div className="p-8 text-center">
-        <div className="text-rose-600 mb-3">
-          <i className="fas fa-exclamation-circle text-3xl"></i>
+      <div className="text-center py-12">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-rose-100 dark:bg-rose-900/30 mb-4">
+          <AlertCircle className="w-8 h-8 text-rose-600 dark:text-rose-400" />
         </div>
-        <p className="text-slate-600">{error}</p>
+        <p className="text-slate-600 dark:text-slate-400">{error}</p>
         <button 
           onClick={loadData} 
-          className="mt-4 bg-brand-600 text-white px-4 py-2 rounded-xl"
+          className="mt-4 bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-xl transition-all"
         >
           Retry
         </button>
       </div>
     );
   }
-  
+
   if (!me) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-slate-500">No user data available. Please try logging in again.</p>
-        <Link to="/login" className="mt-4 inline-block bg-brand-600 text-white px-4 py-2 rounded-xl">
+      <div className="text-center py-12">
+        <p className="text-slate-500 dark:text-slate-400">No user data available. Please try logging in again.</p>
+        <Link to="/login" className="mt-4 inline-block bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-xl transition-all">
           Go to Login
         </Link>
       </div>
@@ -215,140 +225,138 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="rounded-2xl p-6 bg-gradient-to-r from-brand-600 to-teal-600 text-white shadow-lg">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-2xl font-bold">
-              Welcome back, {me.full_name || me.username}!
-            </h3>
-            <p className="text-blue-100 mt-1">Here's your faculty dashboard with an overview of your leave requests and attendance.</p>
-          </div>
-          <div className="mt-4 md:mt-0">
-            <Link to="/request-leave" className="inline-flex items-center px-4 py-2 rounded-xl bg-white/90 text-brand-600 font-semibold hover:bg-white transition">
-              + New Leave Request
-            </Link>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-brand-500 to-indigo-600 p-6 text-white shadow-xl">
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                Welcome back, {me.full_name || me.username}!
+              </h1>
+              <p className="text-brand-100 mt-1">Here's your faculty dashboard overview</p>
+            </div>
+            <div className="mt-4 md:mt-0">
+              <Link 
+                to="/request-leave" 
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all font-semibold"
+              >
+                <FileText size={18} />
+                New Leave Request
+              </Link>
+            </div>
           </div>
         </div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
       </div>
       
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-6 text-center shadow-sm border border-slate-100 hover:shadow-md transition-all hover:-translate-y-1">
-          <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="text-3xl font-bold text-amber-600">{pending}</div>
-          <div className="font-semibold text-slate-700 mt-1">Pending Requests</div>
-          <small className="text-slate-400">Awaiting approval</small>
-        </div>
-        
-        <div className="bg-white rounded-2xl p-6 text-center shadow-sm border border-slate-100 hover:shadow-md transition-all hover:-translate-y-1">
-          <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-7 h-7 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="text-3xl font-bold text-emerald-600">{approved}</div>
-          <div className="font-semibold text-slate-700 mt-1">Approved Requests</div>
-          <small className="text-slate-400">All time</small>
-        </div>
-        
-        <div className="bg-white rounded-2xl p-6 text-center shadow-sm border border-slate-100 hover:shadow-md transition-all hover:-translate-y-1">
-          <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-7 h-7 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div className="text-3xl font-bold text-blue-600">{totalLeavesAvailable}</div>
-          <div className="font-semibold text-slate-700 mt-1">Total Leaves Available</div>
-          <small className="text-slate-400">
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-600 mr-1">🏥{me.medical_leave_left || 0}</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-600 mr-1">🏖️{me.casual_leave_left || 0}</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-600">💰{me.earned_leave_left || 0}</span>
-          </small>
-        </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Pending Requests"
+          value={pending}
+          icon={Clock}
+          color="amber"
+        />
+        <StatCard
+          title="Approved Requests"
+          value={approved}
+          icon={CheckCircle}
+          color="emerald"
+        />
+        <StatCard
+          title="Rejected Requests"
+          value={rejected}
+          icon={XCircle}
+          color="rose"
+        />
+        <StatCard
+          title="Leaves Available"
+          value={totalLeavesAvailable}
+          icon={Award}
+          color="blue"
+          subtitle={`M:${me.medical_leave_left || 0} C:${me.casual_leave_left || 0} E:${me.earned_leave_left || 0}`}
+        />
       </div>
       
       {/* Overwork Tracking Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-5 border-b border-slate-100">
-          <h5 className="text-lg font-bold text-slate-800">
-            🎯 Overwork Hours Tracking
-          </h5>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
+        <div className="p-5 border-b border-slate-200 dark:border-gray-700">
+          <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+            <Activity size={18} className="text-brand-600" />
+            Overwork Hours Tracking
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Track extra working hours and convert them to earned leaves
+          </p>
         </div>
         <div className="p-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6">
             {/* Add Overwork Form */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-100">
-              <h6 className="font-semibold text-slate-800 mb-3">Add Overwork Hours</h6>
-              <p className="text-sm text-slate-500 mb-3">
-                <strong className="text-amber-600">🔥 AUTOMATIC CONVERSION:</strong> When you reach 5+ hours, system automatically converts them to earned leaves!<br />
-                💰 <strong>5 hours = 0.5 day</strong> earned leave<br />
-                💰 <strong>8 hours = 1 day</strong> earned leave
-              </p>
-              <form onSubmit={addOverwork} className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="24"
-                  className="flex-1 border border-slate-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                  placeholder="Enter hours"
-                  value={overworkForm.hours}
-                  onChange={(e) => setOverworkForm({ ...overworkForm, hours: e.target.value })}
-                  required
-                />
-                <input
-                  type="date"
-                  className="border border-slate-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                  value={overworkForm.work_date}
-                  onChange={(e) => setOverworkForm({ ...overworkForm, work_date: e.target.value })}
-                />
-                <button type="submit" disabled={loading} className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-5 py-2 rounded-xl transition">
-                  Add Hours
+            <div className="bg-slate-50 dark:bg-gray-900/50 rounded-xl p-5 border border-slate-200 dark:border-gray-700">
+              <h4 className="font-medium text-slate-800 dark:text-white mb-3">Add Overwork Hours</h4>
+              <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg text-sm text-amber-700 dark:text-amber-400">
+                <strong>💡 Auto Conversion:</strong> Every 5 hours = 1 earned leave day
+              </div>
+              <form onSubmit={addOverwork} className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="24"
+                    className="flex-1 border border-slate-300 dark:border-gray-600 rounded-xl px-4 py-2 bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none"
+                    placeholder="Enter hours"
+                    value={overworkForm.hours}
+                    onChange={(e) => setOverworkForm({ ...overworkForm, hours: e.target.value })}
+                    required
+                  />
+                  <input
+                    type="date"
+                    className="border border-slate-300 dark:border-gray-600 rounded-xl px-4 py-2 bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none"
+                    value={overworkForm.work_date}
+                    onChange={(e) => setOverworkForm({ ...overworkForm, work_date: e.target.value })}
+                  />
+                </div>
+                <button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl transition-all">
+                  {loading ? "Adding..." : "Add Hours"}
                 </button>
               </form>
             </div>
             
             {/* Overwork Summary Card */}
-            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-xl p-5 text-white">
-              <h6 className="font-semibold mb-3">📊 Overwork Summary</h6>
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl p-5 text-white">
+              <h4 className="font-semibold mb-3">📊 Overwork Summary</h4>
               <div className="grid grid-cols-3 text-center mb-4">
                 <div className="border-r border-white/20">
-                  <div className="text-3xl font-bold">{overworkSummary.pending_hours}</div>
+                  <div className="text-2xl font-bold">{overworkSummary.pending_hours}</div>
                   <small>Pending Hours</small>
                 </div>
                 <div className="border-r border-white/20">
-                  <div className="text-3xl font-bold">{overworkSummary.converted_hours}</div>
-                  <small>Converted Hours</small>
+                  <div className="text-2xl font-bold">{overworkSummary.converted_hours}</div>
+                  <small>Converted</small>
                 </div>
                 <div>
-                  <div className="text-3xl font-bold">{overworkSummary.earned_leaves}</div>
+                  <div className="text-2xl font-bold">{overworkSummary.earned_leaves}</div>
                   <small>Earned Leaves</small>
                 </div>
               </div>
               
               {/* Progress Bar */}
               <div className="mb-3">
-                <div className="w-full bg-white/20 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-400 h-2.5 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Progress to next leave</span>
+                  <span>{progressPercentage.toFixed(0)}%</span>
                 </div>
-                <small className="mt-1 block text-white/80">
-                  {needsMoreHours ? (
-                    `${(overworkSummary.conversion_rate - overworkSummary.pending_hours).toFixed(1)} more hours needed for conversion`
-                  ) : (
-                    <>✓ Ready for automatic conversion!</>
-                  )}
-                </small>
+                <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+                  <div className="bg-amber-400 h-2 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }} />
+                </div>
               </div>
               
               {/* Manual Conversion Button */}
               {!needsMoreHours && overworkSummary.pending_hours >= overworkSummary.conversion_rate && (
-                <button onClick={manualConvert} disabled={loading} className="mt-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-xl transition w-full">
+                <button onClick={manualConvert} disabled={loading} className="mt-2 w-full bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all">
                   Convert Now
                 </button>
               )}
@@ -357,83 +365,105 @@ export default function Dashboard() {
         </div>
       </div>
       
+      {/* Toast Message */}
       {msg && (
-        <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-xl shadow-lg z-50">
+        <div className="fixed bottom-4 right-4 bg-slate-800 dark:bg-gray-900 text-white px-4 py-2 rounded-xl shadow-lg z-50">
           {msg}
         </div>
       )}
       
       {/* Quick Actions and Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid lg:grid-cols-3 gap-6">
         {/* Quick Actions */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <h5 className="text-lg font-bold text-slate-800 mb-4">🚀 Quick Actions</h5>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Link to="/request-leave" className="bg-gradient-to-r from-brand-600 to-brand-700 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              Request Leave
-            </Link>
-            <Link to="/status" className="bg-gradient-to-r from-sky-500 to-sky-600 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              Check Status
-            </Link>
-            <Link to="/history" className="bg-gradient-to-r from-slate-500 to-slate-600 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              View History
-            </Link>
-            <Link to="/stats" className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              View Analytics
-            </Link>
-            <Link to="/vacation" className="bg-gradient-to-r from-amber-500 to-amber-600 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              Vacation
-            </Link>
-            <Link to="/profile" className="bg-gradient-to-r from-purple-500 to-purple-600 text-white text-center py-3 rounded-xl font-semibold hover:shadow-md transition">
-              My Profile
-            </Link>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-4">🚀 Quick Actions</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <QuickAction to="/request-leave" label="Request Leave" icon={FileText} color="brand" />
+            <QuickAction to="/status" label="Check Status" icon={ListChecks} color="sky" />
+            <QuickAction to="/history" label="View History" icon={HistoryIcon} color="slate" />
+            <QuickAction to="/stats" label="Analytics" icon={BarChart3} color="emerald" />
+            <QuickAction to="/vacation" label="Vacation" icon={Calendar} color="amber" />
+            <QuickAction to="/profile" label="Profile" icon={User} color="purple" />
           </div>
         </div>
         
         {/* Recent Activities */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <h5 className="text-lg font-bold text-slate-800 mb-4">📋 Recent Activities</h5>
+        <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-4">📋 Recent Activities</h3>
           <div className="space-y-3">
             {recentLeaves.length > 0 ? (
               recentLeaves.map((leave, idx) => (
-                <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border-l-4 border-brand-500 hover:bg-slate-100 transition">
-                  <div>
-                    <h6 className="font-semibold text-slate-800 text-sm">{leave.reason || leave.leave_category || "Leave Request"}</h6>
-                    <small className="text-slate-400 text-xs">
+                <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-900/50 rounded-xl border-l-4 border-brand-500 hover:bg-slate-100 dark:hover:bg-gray-800 transition-all">
+                  <div className="flex-1">
+                    <p className="font-medium text-slate-800 dark:text-white text-sm">{leave.reason || leave.leave_category || "Leave Request"}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                       {leave.start_date} → {leave.end_date}
-                    </small>
+                    </p>
                   </div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                    leave.status === "Approved" ? "bg-emerald-100 text-emerald-700" :
-                    leave.status === "Rejected" ? "bg-rose-100 text-rose-700" :
-                    "bg-amber-100 text-amber-700"
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                    leave.status === "Approved" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" :
+                    leave.status === "Rejected" ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" :
+                    "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
                   }`}>
                     {leave.status}
                   </span>
                 </div>
               ))
             ) : (
-              <p className="text-slate-400 text-center py-4">No recent activities</p>
+              <div className="text-center py-6 text-slate-400 dark:text-slate-500">
+                No recent activities
+              </div>
             )}
           </div>
         </div>
       </div>
-      
-      {/* Vacation Card Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Link to="/vacation" className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-5 text-white text-center hover:shadow-lg transition hover:-translate-y-1">
-          <div className="text-3xl mb-3">🏖️</div>
-          <div className="font-bold text-lg">Vacation</div>
-          <small>Manage Vacation Leaves</small>
-        </Link>
-      </div>
-      
-      {/* Detailed Statistics Button */}
-      <div className="text-center">
-        <Link to="/stats" className="inline-flex items-center bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-3 rounded-xl transition shadow-md hover:shadow-lg">
-          View Detailed Statistics →
-        </Link>
+    </div>
+  );
+}
+
+function StatCard({ title, value, icon: Icon, color, subtitle }) {
+  const colors = {
+    amber: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-600 dark:text-amber-400", iconBg: "bg-amber-100 dark:bg-amber-900/50" },
+    emerald: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-600 dark:text-emerald-400", iconBg: "bg-emerald-100 dark:bg-emerald-900/50" },
+    rose: { bg: "bg-rose-50 dark:bg-rose-950/30", text: "text-rose-600 dark:text-rose-400", iconBg: "bg-rose-100 dark:bg-rose-900/50" },
+    blue: { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-600 dark:text-blue-400", iconBg: "bg-blue-100 dark:bg-blue-900/50" }
+  };
+  
+  const colorStyle = colors[color] || colors.blue;
+  
+  return (
+    <div className={`${colorStyle.bg} rounded-2xl p-5 border border-slate-200 dark:border-gray-700 transition-all hover:shadow-md`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{title}</p>
+          <p className="text-3xl font-bold text-slate-800 dark:text-white mt-1">{value}</p>
+          {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
+        </div>
+        <div className={`${colorStyle.iconBg} p-3 rounded-xl`}>
+          <Icon size={20} className={colorStyle.text} />
+        </div>
       </div>
     </div>
+  );
+}
+
+function QuickAction({ to, label, icon: Icon, color }) {
+  const colors = {
+    brand: "bg-brand-600 hover:bg-brand-700",
+    sky: "bg-sky-500 hover:bg-sky-600",
+    slate: "bg-slate-500 hover:bg-slate-600",
+    emerald: "bg-emerald-500 hover:bg-emerald-600",
+    amber: "bg-amber-500 hover:bg-amber-600",
+    purple: "bg-purple-500 hover:bg-purple-600"
+  };
+  
+  return (
+    <Link
+      to={to}
+      className={`${colors[color]} text-white text-center py-3 rounded-xl font-medium transition-all hover:shadow-md flex items-center justify-center gap-2 text-sm`}
+    >
+      <Icon size={16} />
+      {label}
+    </Link>
   );
 }
