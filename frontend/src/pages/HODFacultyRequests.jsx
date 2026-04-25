@@ -1,105 +1,251 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api/axios";
+import axios from "axios";
+import { 
+  Search, 
+  Filter, 
+  Clock, 
+  CheckCircle, 
+  XCircle,
+  Eye,
+  Calendar,
+  User,
+  FileText
+} from "lucide-react";
 
-function leaveDays(start, end, leaveType) {
-  const d1 = new Date(start);
-  const d2 = new Date(end);
-  const diff = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
-  if (leaveType === "half_day") return 0.5;
-  return diff > 0 ? diff : 0;
-}
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function HODFacultyRequests() {
-  const [rows, setRows] = useState([]);
-  const [q, setQ] = useState("");
+  const token = localStorage.getItem("token");
+  const [requests, setRequests] = useState([]);
+  const [filteredRequests, setFilteredRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0 });
 
   useEffect(() => {
-    api.get("/hod/faculty-requests").then((r) => setRows(r.data || []));
+    loadRequests();
   }, []);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) =>
-      [r.full_name, r.email, r.designation, r.leave_category, r.leave_type].join(" ").toLowerCase().includes(s)
-    );
-  }, [rows, q]);
+  useEffect(() => {
+    filterRequests();
+  }, [searchTerm, statusFilter, requests]);
 
-  const summary = useMemo(() => {
-    return filtered.reduce(
-      (acc, r) => {
-        acc.total += 1;
-        if (r.leave_category === "medical") acc.medical += 1;
-        if (r.leave_category === "casual") acc.casual += 1;
-        if (r.leave_category === "earned") acc.earned += 1;
-        return acc;
-      },
-      { total: 0, medical: 0, casual: 0, earned: 0 }
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/hod/faculty-requests`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setRequests(res.data);
+      
+      // Calculate stats
+      const pending = res.data.filter(r => r.status === "pending").length;
+      const approved = res.data.filter(r => r.status === "approved").length;
+      const rejected = res.data.filter(r => r.status === "rejected").length;
+      setStats({ pending, approved, rejected });
+    } catch (err) {
+      console.error("Failed to load requests", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterRequests = () => {
+    let filtered = [...requests];
+    
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(r => r.status === statusFilter);
+    }
+    
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.faculty_name?.toLowerCase().includes(term) ||
+        r.department?.toLowerCase().includes(term) ||
+        r.leave_category?.toLowerCase().includes(term)
+      );
+    }
+    
+    setFilteredRequests(filtered);
+  };
+
+  const updateStatus = async (id, status) => {
+    try {
+      await axios.put(`${API}/hod/faculty-requests/${id}/status`, 
+        { status },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      loadRequests();
+    } catch (err) {
+      console.error("Failed to update status", err);
+      alert(err?.response?.data?.message || "Failed to update request");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-600 border-t-transparent"></div>
+      </div>
     );
-  }, [filtered]);
+  }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold">Faculty Requests (Pending)</h2>
-
-      <div className="bg-white rounded-2xl p-4 shadow">
-        <input
-          className="border rounded-xl p-3 w-full"
-          placeholder="Search by name, email, designation..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">Faculty Leave Requests</h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1">Review and manage leave requests from your department</p>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-3">
-        <Card t="Total Pending" v={summary.total} />
-        <Card t="Medical" v={summary.medical} />
-        <Card t="Casual" v={summary.casual} />
-        <Card t="Earned" v={summary.earned} />
+      {/* Stats Summary */}
+      <div className="grid grid-cols-3 gap-4">
+        <StatSummary label="Pending" count={stats.pending} color="amber" />
+        <StatSummary label="Approved" count={stats.approved} color="emerald" />
+        <StatSummary label="Rejected" count={stats.rejected} color="rose" />
       </div>
 
-      <div className="bg-white rounded-2xl p-4 shadow overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b">
-              <th className="py-2">Faculty</th>
-              <th>Leave Details</th>
-              <th>Duration</th>
-              <th>Reason</th>
-              <th>Attachment</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.id} className="border-b">
-                <td className="py-2">
-                  <p className="font-semibold">{r.full_name}</p>
-                  <p className="text-slate-500">{r.email}</p>
-                </td>
-                <td>{r.leave_category} / {r.leave_type} / {r.special_leave_type}</td>
-                <td>{r.start_date} - {r.end_date} ({leaveDays(r.start_date, r.end_date, r.leave_type)} day)</td>
-                <td>{r.reason}</td>
-                <td>{r.attachment_path ? <a href={`http://localhost:5000${r.attachment_path}`} target="_blank" className="text-brand-700 underline">View</a> : "-"}</td>
-                <td>
-                  <Link className="text-brand-700 underline" to={`/hod-admin/faculty-requests/${r.id}`}>Review</Link>
-                </td>
-              </tr>
+      {/* Filters */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by faculty name, department, or leave type..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            {["all", "pending", "approved", "rejected"].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-2 rounded-xl capitalize transition-all ${
+                  statusFilter === status
+                    ? "bg-brand-600 text-white"
+                    : "bg-slate-100 dark:bg-gray-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gray-600"
+                }`}
+              >
+                {status}
+              </button>
             ))}
-            {filtered.length === 0 && <tr><td className="py-3 text-slate-500" colSpan={6}>No pending requests.</td></tr>}
-          </tbody>
-        </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Requests List */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50 dark:bg-gray-900/50 border-b border-slate-200 dark:border-gray-700">
+              <tr>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Faculty</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Department</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Leave Type</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Duration</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Days</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Status</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-gray-700">
+              {filteredRequests.length > 0 ? (
+                filteredRequests.map((req) => (
+                  <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <User size={16} className="text-slate-400" />
+                        <span className="font-medium text-slate-800 dark:text-white">{req.faculty_name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{req.department || "-"}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        {req.leave_category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-sm">
+                      {req.start_date} → {req.end_date}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">{req.days}</td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={req.status} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={`/hod-admin/faculty-requests/${req.id}`}
+                          className="p-2 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
+                        >
+                          <Eye size={18} />
+                        </Link>
+                        {req.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => updateStatus(req.id, "approved")}
+                              className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                              title="Approve"
+                            >
+                              <CheckCircle size={18} />
+                            </button>
+                            <button
+                              onClick={() => updateStatus(req.id, "rejected")}
+                              className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                              title="Reject"
+                            >
+                              <XCircle size={18} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="7" className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
+                    No leave requests found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
-function Card({ t, v }) {
+function StatSummary({ label, count, color }) {
+  const colors = {
+    amber: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
+    emerald: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
+    rose: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400"
+  };
+  
   return (
-    <div className="bg-white rounded-2xl p-4 shadow">
-      <p className="text-slate-500 text-sm">{t}</p>
-      <p className="text-2xl font-bold">{v}</p>
+    <div className={`${colors[color]} rounded-2xl p-4 text-center`}>
+      <p className="text-2xl font-bold">{count}</p>
+      <p className="text-sm">{label}</p>
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const styles = {
+    pending: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+    approved: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400",
+    rejected: "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400"
+  };
+  
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[status] || styles.pending}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
   );
 }

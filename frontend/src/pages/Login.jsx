@@ -4,33 +4,47 @@ import { Eye, EyeOff } from "lucide-react";
 import api from "../api/axios";
 
 export default function Login() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const [form, setForm] = useState({ username: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [error, setError] = useState("");
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setErr("");
+    setError("");
     setLoading(true);
 
     try {
       const { data } = await api.post("/login", form);
 
+      // Store token and user data
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      const role = data?.user?.role;
-      if (role === "hod") return nav("/hod-dashboard", { replace: true });
-      if (role === "registry") return nav("/registry-dashboard", { replace: true });
-      if (role === "officestaff") return nav("/officestaff-dashboard", { replace: true });
-      if (role === "headclerk") return nav("/headclerk-dashboard", { replace: true });
-      if (role === "principal") return nav("/principal-dashboard", { replace: true });
+      console.log("Login successful. User role:", data.user?.role);
+      console.log("Full user data:", data.user);
+
+      // Redirect based on role
+      const role = data.user?.role;
       
-      return nav("/dashboard", { replace: true });
-    } catch (e2) {
-      setErr(e2?.response?.data?.message || `Login failed (${e2?.response?.status || "no-status"})`);
+      if (role === "hod") {
+        navigate("/hod-dashboard", { replace: true });
+      } else if (role === "registry") {
+        navigate("/registry-dashboard", { replace: true });
+      } else if (role === "officestaff") {
+        navigate("/officestaff-dashboard", { replace: true });
+      } else if (role === "headclerk") {
+        navigate("/headclerk-dashboard", { replace: true });
+      } else if (role === "principal") {
+        console.log("Redirecting to principal dashboard");
+        navigate("/principal-dashboard", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError(err?.response?.data?.message || "Login failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }
@@ -82,7 +96,7 @@ export default function Login() {
             </Link>
           </div>
 
-          {err && <p className="text-rose-600 text-sm">{err}</p>}
+          {error && <p className="text-rose-600 text-sm">{error}</p>}
 
           <button 
             type="submit" 

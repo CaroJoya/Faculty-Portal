@@ -62,6 +62,7 @@ import HeadClerkHolidays from "./pages/HeadClerkHolidays";
 import PrincipalDashboard from "./pages/PrincipalDashboard";
 import PrincipalAllPending from "./pages/PrincipalAllPending";
 import PrincipalHODPending from "./pages/PrincipalHODPending";
+import PrincipalLayout from "./layouts/PrincipalLayout"; // Import the layout
 
 // ---- helpers ----
 function getUser() {
@@ -579,13 +580,15 @@ export default function App() {
               } 
             />
 
-            {/* ===== PRINCIPAL ROUTES ===== */}
+            {/* ===== PRINCIPAL ROUTES (UPDATED WITH LAYOUT) ===== */}
             <Route 
               path="/principal-dashboard" 
               element={
                 <RequireAuth>
                   <RequireRole roles={["principal"]}>
-                    <PrincipalDashboard />
+                    <PrincipalLayout>
+                      <PrincipalDashboard />
+                    </PrincipalLayout>
                   </RequireRole>
                 </RequireAuth>
               } 
@@ -595,7 +598,9 @@ export default function App() {
               element={
                 <RequireAuth>
                   <RequireRole roles={["principal"]}>
-                    <PrincipalAllPending />
+                    <PrincipalLayout>
+                      <PrincipalAllPending />
+                    </PrincipalLayout>
                   </RequireRole>
                 </RequireAuth>
               } 
@@ -605,7 +610,9 @@ export default function App() {
               element={
                 <RequireAuth>
                   <RequireRole roles={["principal"]}>
-                    <PrincipalHODPending />
+                    <PrincipalLayout>
+                      <PrincipalHODPending />
+                    </PrincipalLayout>
                   </RequireRole>
                 </RequireAuth>
               } 
@@ -615,7 +622,9 @@ export default function App() {
               element={
                 <RequireAuth>
                   <RequireRole roles={["principal"]}>
-                    <Profile />
+                    <PrincipalLayout>
+                      <Profile />
+                    </PrincipalLayout>
                   </RequireRole>
                 </RequireAuth>
               } 
