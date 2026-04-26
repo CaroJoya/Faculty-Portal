@@ -22,7 +22,7 @@ export default function ResetPassword() {
   useEffect(() => {
     if (!token) {
       setTokenValid(false);
-      setError("No reset token provided. Please request a new password reset.");
+      setError("No reset token provided. Please request a new password reset for PCE Faculty Leave Portal.");
     }
   }, [token]);
 
@@ -76,7 +76,7 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-blue-100 to-indigo-100 px-4">
       <form onSubmit={submit} className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-4">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">Create New Password</h2>
-        <p className="text-slate-500 text-sm mb-4">Enter your new password below.</p>
+        <p className="text-slate-500 text-sm mb-4">Enter your new password below for PCE Faculty Leave Portal.</p>
 
         {/* New Password Field */}
         <div className="relative">

@@ -37,7 +37,7 @@ export default function Register() {
   return (
     <div className="min-h-screen grid place-items-center bg-gradient-to-br from-indigo-100 via-white to-brand-100 p-4">
       <form onSubmit={submit} className="w-full max-w-2xl bg-white shadow-xl rounded-2xl p-6 grid gap-3 md:grid-cols-2">
-        <h2 className="text-2xl font-bold text-slate-800 md:col-span-2">Create Account</h2>
+        <h2 className="text-2xl font-bold text-slate-800 md:col-span-2">Create Account - PCE Faculty Leave Portal</h2>
 
         <input className="border rounded-xl p-3" placeholder="Username" required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         <input className="border rounded-xl p-3" type="password" placeholder="Password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

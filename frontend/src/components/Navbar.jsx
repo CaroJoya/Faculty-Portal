@@ -46,6 +46,11 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Hide navbar on welcome page
+  if (loc.pathname === "/") {
+    return null;
+  }
+
   const facultyLinks = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/request-leave", label: "Request Leave", icon: FilePlus2 },
@@ -192,7 +197,7 @@ export default function Navbar() {
               </div>
               <div className="hidden sm:block">
                 <h1 className="text-xl font-bold bg-gradient-to-r from-brand-700 to-indigo-700 dark:from-brand-400 dark:to-indigo-400 bg-clip-text text-transparent">
-                  Faculty Leave Portal
+                  PCE Faculty Leave Portal
                 </h1>
                 <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                   {roleIcon}

@@ -54,7 +54,7 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-100 to-indigo-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
         <h2 className="text-3xl font-bold text-slate-800 mb-2">Welcome Back</h2>
-        <p className="text-slate-500 mb-6">Login to Faculty Leave Portal</p>
+        <p className="text-slate-500 mb-6">Login to PCE Faculty Leave Portal</p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           {/* Username Field */}

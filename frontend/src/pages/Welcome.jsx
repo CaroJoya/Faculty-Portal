@@ -1,7 +1,9 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Calendar, Shield, Users, Clock, ArrowRight } from "lucide-react";
 
 export default function Welcome() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Hero Section */}
@@ -9,26 +11,32 @@ export default function Welcome() {
         <div className="absolute inset-0 bg-gradient-to-r from-brand-600/10 to-indigo-600/10" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center">
+            {/* College Logo - Enlarged */}
+            <div className="flex justify-center mb-8">
+              <img 
+                src="/college-logo.png" 
+                alt="PCE College Logo" 
+                className="h-40 w-auto object-contain md:h-48 lg:h-56"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.style.display = "none";
+                }}
+              />
+            </div>
             <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-brand-700 to-indigo-700 bg-clip-text text-transparent">
-              Faculty Leave Management
+              PCE Faculty Leave Portal
             </h1>
             <p className="mt-4 text-xl text-slate-600 max-w-2xl mx-auto">
               Streamline leave requests, track attendance, and manage faculty workflows efficiently.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                to="/login"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700 transition shadow-lg hover:shadow-xl"
+            <div className="mt-8">
+              <button
+                onClick={() => navigate("/login")}
+                className="inline-flex items-center justify-center px-8 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700 transition shadow-lg hover:shadow-xl text-lg cursor-pointer"
               >
                 Get Started
                 <ArrowRight className="ml-2 w-5 h-5" />
-              </Link>
-              <Link
-                to="/register"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white text-brand-700 font-semibold border border-brand-200 hover:bg-brand-50 transition"
-              >
-                Create Account
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -67,7 +75,7 @@ export default function Welcome() {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-8 mt-16">
         <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm">
-          <p>&copy; {new Date().getFullYear()} Faculty Leave Portal. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} PCE Faculty Leave Portal. All rights reserved.</p>
         </div>
       </footer>
     </div>
