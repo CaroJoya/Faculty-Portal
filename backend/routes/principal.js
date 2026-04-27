@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const { sendLeaveStatusUpdate, sendNewLeaveRequest } = require("../utils/emailService");
 
 const router = express.Router();
 
@@ -25,13 +26,6 @@ function parseDays(reqRow) {
 function deductLeaveBalance(username, category, days) {
   if (!["medical", "casual", "earned"].includes((category || "").toLowerCase())) return;
 
-  const user = db.prepare(`
-    SELECT username, medical_leave_left, casual_leave_left, earned_leave_left,
-           medical_leave_used, casual_leave_used, earned_leave_used
-    FROM users WHERE username = ?
-  `).get(username);
-  if (!user) throw new Error("User not found for balance deduction");
-
   const d = Number(days || 0);
   if (category === "medical") {
     db.prepare(`
@@ -52,6 +46,34 @@ function deductLeaveBalance(username, category, days) {
       UPDATE users
       SET earned_leave_left = MAX(0, COALESCE(earned_leave_left,0) - ?),
           earned_leave_used = COALESCE(earned_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  }
+}
+
+function restoreLeaveBalance(username, category, days) {
+  if (!["medical", "casual", "earned"].includes((category || "").toLowerCase())) return;
+
+  const d = Number(days || 0);
+  if (category === "medical") {
+    db.prepare(`
+      UPDATE users
+      SET medical_leave_left = COALESCE(medical_leave_left,0) + ?,
+          medical_leave_used = MAX(0, COALESCE(medical_leave_used,0) - ?)
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "casual") {
+    db.prepare(`
+      UPDATE users
+      SET casual_leave_left = COALESCE(casual_leave_left,0) + ?,
+          casual_leave_used = MAX(0, COALESCE(casual_leave_used,0) - ?)
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "earned") {
+    db.prepare(`
+      UPDATE users
+      SET earned_leave_left = COALESCE(earned_leave_left,0) + ?,
+          earned_leave_used = MAX(0, COALESCE(earned_leave_used,0) - ?)
       WHERE username = ?
     `).run(d, d, username);
   }
@@ -298,7 +320,6 @@ router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRole
 });
 
 // 8) final approve (faculty/office/reg/hod)
-// NOTE: OD letter generation REMOVED. OD file is uploaded by user as attachment.
 router.post("/principal/final-approve/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
@@ -310,11 +331,42 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
       SELECT lr.*, u.role, u.username, u.full_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id=? AND lr.status='Pending'
+      WHERE lr.id=? 
     `).get(id);
 
-    if (!row) return res.status(404).json({ message: "Pending request not found" });
+    if (!row) return res.status(404).json({ message: "Request not found" });
 
+    // If already approved by HOD/Registry, only mark final_approver and send notifications; do not double-deduct
+    if (row.status === "Approved") {
+      db.prepare(`
+        UPDATE leave_requests
+        SET final_approver='Principal',
+            admin_comments=COALESCE(admin_comments, ?) 
+        WHERE id=?
+      `).run(admin_comments || null, id);
+
+      // notify requester and HOD/Registry about principal's final approval
+      try {
+        const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+        const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+        if (requester && requester.email) {
+          sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "").catch((e) => console.error(e));
+        }
+        // notify HOD/Registry who approved previously
+        if (row.hod_approved_by) {
+          const approver = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.hod_approved_by);
+          if (approver && approver.email) {
+            sendLeaveStatusUpdate(approver, leaveRow, "Approved", `Principal confirmed approval. ${admin_comments || ""}`).catch((e) => console.error(e));
+          }
+        }
+      } catch (e) {
+        console.error("Principal final-approve notification error:", e);
+      }
+
+      return res.json({ message: "Leave finally approved by Principal" });
+    }
+
+    // Otherwise (Pending), perform approve + deduct
     const tx = db.transaction(() => {
       db.prepare(`
         UPDATE leave_requests
@@ -325,12 +377,22 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
         WHERE id=?
       `).run(admin_comments || null, id);
 
-      // Vacation is auto-approved in vacation route; do not deduct here.
       if ((row.leave_category || "").toLowerCase() !== "vacation") {
         deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), parseDays(row));
       }
     });
     tx();
+
+    // notify requester
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "").catch((e) => console.error(e));
+      }
+    } catch (e) {
+      console.error("Principal final-approve notification error:", e);
+    }
 
     res.json({ message: "Leave finally approved" });
   } catch (e) {
@@ -339,7 +401,7 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
   }
 });
 
-// 9) final reject
+// 9) final reject — allow rejecting Pending OR Approved requests before start_date, restore balances if previously deducted
 router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
@@ -351,13 +413,35 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
     }
 
     const row = db.prepare(`
-      SELECT lr.id
+      SELECT lr.*, u.role, u.username as requester_username, u.full_name, u.department
       FROM leave_requests lr
-      WHERE lr.id=? AND lr.status='Pending'
+      JOIN users u ON u.username = lr.user_username
+      WHERE lr.id=?
     `).get(id);
 
-    if (!row) return res.status(404).json({ message: "Pending request not found" });
+    if (!row) return res.status(404).json({ message: "Request not found" });
 
+    const today = new Date().toISOString().slice(0, 10);
+    if (!row.start_date) {
+      return res.status(400).json({ message: "Request has no start_date" });
+    }
+    // Principal can only reject before start date
+    if (new Date(row.start_date) <= new Date(today)) {
+      return res.status(400).json({ message: "Cannot reject: start date has already passed or is today" });
+    }
+
+    // If request was already Approved (by HOD/Registry or auto), restore balances
+    if (row.status === "Approved") {
+      try {
+        if ((row.leave_category || "").toLowerCase() !== "vacation") {
+          restoreLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), parseDays(row));
+        }
+      } catch (e) {
+        console.error("Error restoring balances on principal reject:", e);
+      }
+    }
+
+    // Update status to Rejected
     db.prepare(`
       UPDATE leave_requests
       SET status='Rejected',
@@ -366,7 +450,32 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       WHERE id=?
     `).run(admin_comments, id);
 
-    res.json({ message: "Leave finally rejected" });
+    // Notify requester
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", admin_comments).catch((e) => console.error(e));
+      }
+    } catch (e) {
+      console.error("Principal final-reject notification to requester failed:", e);
+    }
+
+    // Notify HOD/Registry who originally approved (if present)
+    try {
+      const approverUsername = row.hod_approved_by;
+      if (approverUsername) {
+        const approver = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(approverUsername);
+        const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+        if (approver && approver.email) {
+          sendLeaveStatusUpdate(approver, updatedRow, "Rejected", `Principal has rejected this request: ${admin_comments}`).catch((e) => console.error(e));
+        }
+      }
+    } catch (e) {
+      console.error("Principal final-reject notification to approver failed:", e);
+    }
+
+    res.json({ message: "Leave finally rejected by Principal" });
   } catch (e) {
     console.error("PRINCIPAL final-reject error:", e);
     res.status(500).json({ message: "Internal Server Error" });

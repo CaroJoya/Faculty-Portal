@@ -1,22 +1,10 @@
 const express = require("express");
-const multer = require("multer");
-const path = require("path");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const { uploader } = require("../utils/fileUpload");
+const { sendNewLeaveRequest } = require("../utils/emailService");
 
 const router = express.Router();
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, "..", "uploads"));
-  },
-  filename: function (req, file, cb) {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}-${file.originalname}`);
-  }
-});
-
-const upload = multer({ storage });
 
 function calculateLeaveDays(start, end, leaveType) {
   if (leaveType === "half_day") return 0.5;
@@ -29,7 +17,7 @@ router.post(
   "/leave-requests",
   authenticateToken,
   authorizeRoles("faculty", "hod", "officestaff", "registry"),
-  upload.single("attachment"),
+  uploader.single("attachment"),
   (req, res) => {
     try {
       const {
@@ -58,8 +46,6 @@ router.post(
       }
 
       let finalReason = reason;
-      
-      // Only faculty can have recommendations
       const userRole = req.user.role;
       if (userRole === "faculty" && req.body.recommendations) {
         try {
@@ -96,6 +82,41 @@ router.post(
         attachment_path
       );
 
+      // non-blocking email notification: find the right recipient (HOD or Registry)
+      try {
+        const newId = result.lastInsertRowid;
+        const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(newId);
+        const requester = db.prepare("SELECT username, full_name, email, department, role FROM users WHERE username = ?").get(req.user.username);
+
+        if (requester) {
+          if (requester.role === "faculty") {
+            // find HOD for this department
+            let hod = db.prepare("SELECT username, full_name, email, managed_department FROM users WHERE is_hod = 1 AND managed_department = ? LIMIT 1").get(requester.department);
+            if (!hod) {
+              // fallback to any hod with the same department
+              hod = db.prepare("SELECT username, full_name, email, department FROM users WHERE role = 'hod' AND department = ? LIMIT 1").get(requester.department);
+            }
+            if (hod && hod.email) {
+              const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/hod-admin/faculty-requests/${newId}`;
+              sendNewLeaveRequest(requester, leaveRow, hod, reviewLink).catch((e) => {
+                console.error("Failed to send new leave notification to HOD:", e?.message || e);
+              });
+            }
+          } else if (requester.role === "officestaff") {
+            // notify registry
+            const registry = db.prepare("SELECT username, full_name, email FROM users WHERE is_registry = 1 LIMIT 1").get();
+            if (registry && registry.email) {
+              const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/registry-admin/staff-requests/${result.lastInsertRowid}`;
+              sendNewLeaveRequest(requester, leaveRow, registry, reviewLink).catch((e) => {
+                console.error("Failed to send new leave notification to Registry:", e?.message || e);
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Post-create notification error (non-fatal):", e);
+      }
+
       res.status(201).json({
         message: "Leave request submitted successfully",
         leaveRequestId: result.lastInsertRowid,
@@ -107,77 +128,5 @@ router.post(
     }
   }
 );
-
-// GET /api/leave-requests
-router.get("/leave-requests", authenticateToken, (req, res) => {
-  const rows = db.prepare(`
-    SELECT * FROM leave_requests
-    WHERE user_username = ?
-    ORDER BY created_at DESC
-  `).all(req.user.username);
-
-  res.json(rows);
-});
-
-// GET /api/leave-requests/status
-router.get("/leave-requests/status", authenticateToken, (req, res) => {
-  const pending = db.prepare(`
-    SELECT COUNT(*) as count FROM leave_requests
-    WHERE user_username = ? AND status = 'Pending'
-  `).get(req.user.username).count;
-
-  const approved = db.prepare(`
-    SELECT COUNT(*) as count FROM leave_requests
-    WHERE user_username = ? AND status = 'Approved'
-  `).get(req.user.username).count;
-
-  const rejected = db.prepare(`
-    SELECT COUNT(*) as count FROM leave_requests
-    WHERE user_username = ? AND status = 'Rejected'
-  `).get(req.user.username).count;
-
-  res.json({ pending, approved, rejected });
-});
-
-// GET /api/leave-requests/history
-router.get("/leave-requests/history", authenticateToken, (req, res) => {
-  const { from, to } = req.query;
-
-  let query = `
-    SELECT * FROM leave_requests
-    WHERE user_username = ? AND status = 'Approved'
-  `;
-  const params = [req.user.username];
-
-  if (from) {
-    query += " AND start_date >= ?";
-    params.push(from);
-  }
-  if (to) {
-    query += " AND end_date <= ?";
-    params.push(to);
-  }
-
-  query += " ORDER BY start_date DESC";
-
-  const rows = db.prepare(query).all(...params);
-
-  res.json(rows);
-});
-
-// GET /api/leave-requests/stats
-router.get("/leave-requests/stats", authenticateToken, (req, res) => {
-  const rows = db.prepare(`
-    SELECT 
-      strftime('%Y-%m', start_date) as month,
-      COUNT(*) as total_requests
-    FROM leave_requests
-    WHERE user_username = ?
-    GROUP BY strftime('%Y-%m', start_date)
-    ORDER BY month ASC
-  `).all(req.user.username);
-
-  res.json(rows);
-});
 
 module.exports = router;

@@ -63,6 +63,7 @@ export default function PrincipalAllPending() {
       setStats(roleStats);
     } catch (err) {
       console.error("Failed to load requests", err);
+      alert(err?.response?.data?.message || "Failed to load requests");
     } finally {
       setLoading(false);
     }
@@ -120,6 +121,7 @@ export default function PrincipalAllPending() {
       setComments("");
       loadRequests();
     } catch (err) {
+      console.error("Approve failed", err);
       alert(err?.response?.data?.message || "Failed to approve request");
     } finally {
       setProcessing(false);
@@ -158,6 +160,39 @@ export default function PrincipalAllPending() {
       setComments("");
       loadRequests();
     } catch (err) {
+      console.error("Reject failed", err);
+      alert(err?.response?.data?.message || "Failed to reject request");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Inline reject (quick action directly from the row)
+  const inlineReject = async (req) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      if (!req.start_date) {
+        return alert("Cannot reject: request has no start date");
+      }
+      // Optional client-side check — backend enforces final rule
+      if (new Date(req.start_date) <= new Date(today)) {
+        return alert("Cannot reject: start date has already passed or is today");
+      }
+
+      const reason = window.prompt(`Provide rejection reason for ${req.full_name}:`);
+      if (!reason || !reason.trim()) return alert("Rejection reason is required");
+
+      setProcessing(true);
+      // call final-reject for all roles (principal handles mapping)
+      await axios.post(`${API}/principal/final-reject/${req.id}`, 
+        { admin_comments: reason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert("Request rejected successfully");
+      loadRequests();
+    } catch (err) {
+      console.error("Inline reject error", err);
       alert(err?.response?.data?.message || "Failed to reject request");
     } finally {
       setProcessing(false);
@@ -288,84 +323,96 @@ export default function PrincipalAllPending() {
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Leave Period</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Type</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Days</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Approved By</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-gray-700">
               {currentItems.length > 0 ? (
-                currentItems.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-medium text-slate-800 dark:text-white">{req.full_name}</p>
-                        <p className="text-xs text-slate-400">{req.email}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{req.department || "-"}</td>
-                    <td className="px-6 py-4">
-                      <RoleBadge role={req.role} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-slate-400" />
-                        <span className="text-sm text-slate-700 dark:text-slate-300">
-                          {req.start_date} → {req.end_date}
+                currentItems.map((req) => {
+                  // determine approver label
+                  let approverLabel = "-";
+                  if (req.final_approver) approverLabel = req.final_approver;
+                  else if (req.hod_approved) approverLabel = req.hod_approved_by ? `HOD/Registry (${req.hod_approved_by})` : "HOD/Registry";
+                  
+                  const highlighted = Boolean(req.hod_approved || (req.final_approver && (req.final_approver === "HOD" || req.final_approver === "Registry")));
+
+                  return (
+                    <tr key={req.id} className={`hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${highlighted ? "bg-slate-50 dark:bg-gray-900/20" : ""}`}>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-slate-800 dark:text-white">{req.full_name}</p>
+                          <p className="text-xs text-slate-400">{req.email}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{req.department || "-"}</td>
+                      <td className="px-6 py-4">
+                        <RoleBadge role={req.role} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className="text-slate-400" />
+                          <span className="text-sm text-slate-700 dark:text-slate-300">
+                            {req.start_date} → {req.end_date}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                          req.leave_category === "medical" ? "bg-blue-100 text-blue-700" :
+                          req.leave_category === "casual" ? "bg-emerald-100 text-emerald-700" :
+                          "bg-amber-100 text-amber-700"
+                        }`}>
+                          {req.leave_category}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                        req.leave_category === "medical" ? "bg-blue-100 text-blue-700" :
-                        req.leave_category === "casual" ? "bg-emerald-100 text-emerald-700" :
-                        "bg-amber-100 text-amber-700"
-                      }`}>
-                        {req.leave_category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
-                      {req.duration_days || "-"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setActionType("approve");
-                            setComments("");
-                          }}
-                          className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
-                          title="Approve"
-                        >
-                          <CheckCircle size={18} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setActionType("reject");
-                            setComments("");
-                          }}
-                          className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Reject"
-                        >
-                          <XCircle size={18} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setActionType("view");
-                          }}
-                          className="p-2 rounded-lg text-brand-600 hover:bg-brand-50 transition-colors"
-                          title="View Details"
-                        >
-                          <Eye size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
+                        {req.duration_days || "-"}
+                      </td>
+                      <td className="px-6 py-4 text-slate-700 dark:text-slate-300">{approverLabel}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {/* Existing modal-based actions */}
+                          <button
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setActionType("approve");
+                              setComments("");
+                            }}
+                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="Approve"
+                          >
+                            <CheckCircle size={18} />
+                          </button>
+
+                          {/* Quick inline reject */}
+                          <button
+                            onClick={() => inlineReject(req)}
+                            className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Quick Reject"
+                          >
+                            <XCircle size={18} />
+                          </button>
+
+                          {/* View details (modal) */}
+                          <button
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setActionType("view");
+                            }}
+                            className="p-2 rounded-lg text-brand-600 hover:bg-brand-50 transition-colors"
+                            title="View Details"
+                          >
+                            <Eye size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan="8" className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
                     <div className="flex flex-col items-center gap-2">
                       <CheckCircle size={48} className="text-emerald-500" />
                       <p>No pending requests found!</p>

@@ -2,11 +2,12 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const { sendLeaveStatusUpdate, sendNewLeaveRequest } = require("../utils/emailService");
 
 const router = express.Router();
 
 function ensureRegistry(req, res) {
-  const u = db.prepare("SELECT username, role, department FROM users WHERE username = ?").get(req.user.username);
+  const u = db.prepare("SELECT username, role FROM users WHERE username = ?").get(req.user.username);
   if (!u || u.role !== "registry") {
     res.status(403).json({ message: "Only Registry can access this endpoint" });
     return null;
@@ -14,12 +15,41 @@ function ensureRegistry(req, res) {
   return u;
 }
 
-function ensureOfficeStaffUser(username) {
-  return db.prepare(`
-    SELECT username, role, department
-    FROM users
-    WHERE username = ?
-  `).get(username);
+function parseDays(reqRow) {
+  if (reqRow.duration_days != null) return Number(reqRow.duration_days);
+  if (reqRow.start_date && reqRow.end_date) {
+    const d = db.prepare(`SELECT (julianday(?) - julianday(?) + 1) AS d`).get(reqRow.end_date, reqRow.start_date).d;
+    return Math.max(0.5, Number(d || 1));
+  }
+  return 1;
+}
+
+function deductLeaveBalance(username, category, days) {
+  if (!["medical", "casual", "earned"].includes((category || "").toLowerCase())) return;
+
+  const d = Number(days || 0);
+  if (category === "medical") {
+    db.prepare(`
+      UPDATE users
+      SET medical_leave_left = MAX(0, COALESCE(medical_leave_left,0) - ?),
+          medical_leave_used = COALESCE(medical_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "casual") {
+    db.prepare(`
+      UPDATE users
+      SET casual_leave_left = MAX(0, COALESCE(casual_leave_left,0) - ?),
+          casual_leave_used = COALESCE(casual_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "earned") {
+    db.prepare(`
+      UPDATE users
+      SET earned_leave_left = MAX(0, COALESCE(earned_leave_left,0) - ?),
+          earned_leave_used = COALESCE(earned_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  }
 }
 
 // ========== 1) dashboard stats ==========
@@ -188,7 +218,7 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
   }
 });
 
-// ========== 4) approve + forward ==========
+// ========== 4) approve + forward (Registry approves final by default) ==========
 router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -198,7 +228,7 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
     const { comments } = req.body;
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department, u.role
+      SELECT lr.*, u.department, u.role
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ?
@@ -210,18 +240,56 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
     }
     if (row.status !== "Pending") return res.status(400).json({ message: "Only pending requests can be forwarded" });
 
-    db.prepare(`
-      UPDATE leave_requests
-      SET hod_approved = 1,
-          hod_comments = ?,
-          hod_approved_by = ?,
-          hod_approved_at = CURRENT_TIMESTAMP,
-          status = 'Pending',
-          final_approver = 'Principal'
-      WHERE id = ?
-    `).run(comments || null, req.user.username, id);
+    const days = parseDays(row);
 
-    return res.json({ message: "Approved by Registry and forwarded to Principal" });
+    const tx = db.transaction(() => {
+      db.prepare(`
+        UPDATE leave_requests
+        SET hod_approved = 1,
+            hod_comments = ?,
+            hod_approved_by = ?,
+            hod_approved_at = CURRENT_TIMESTAMP,
+            status = 'Approved',
+            approved_at = CURRENT_TIMESTAMP,
+            final_approver = 'Registry'
+        WHERE id = ?
+      `).run(comments || null, req.user.username, id);
+
+      if ((row.leave_category || "").toLowerCase() !== "vacation") {
+        deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), days);
+      }
+    });
+    tx();
+
+    // Notify requester (office staff)
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, updatedRow, "Approved", comments || "").catch((e) => {
+          console.error("Failed to send approval email to requester:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("Registry post-approve notification error:", e);
+    }
+
+    // Notify principal
+    try {
+      const principal = db.prepare("SELECT username, full_name, email FROM users WHERE is_principal = 1 LIMIT 1").get();
+      if (principal && principal.email) {
+        const requester = db.prepare("SELECT username, full_name, email, department FROM users WHERE username = ?").get(row.user_username);
+        const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/principal/all-pending`;
+        const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+        sendNewLeaveRequest(requester, updatedRow, principal, reviewLink).catch((e) => {
+          console.error("Failed to notify Principal of Registry approval:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("Error notifying principal after Registry approval:", e);
+    }
+
+    return res.json({ message: "Approved by Registry" });
   } catch (e) {
     console.error("REGISTRY approve-forward error:", e);
     return res.status(500).json({ message: "Internal Server Error" });
@@ -241,7 +309,7 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
     }
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department, u.role
+      SELECT lr.id, lr.status, u.department, u.role, lr.user_username
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ?
@@ -260,9 +328,23 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
           hod_approved = 0,
           hod_comments = ?,
           hod_approved_by = ?,
-          hod_approved_at = CURRENT_TIMESTAMP
+          hod_approved_at = CURRENT_TIMESTAMP,
+          final_approver = 'Registry'
       WHERE id = ?
     `).run(rejection_reason, rejection_reason, req.user.username, id);
+
+    // notify requester
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason).catch((e) => {
+          console.error("Failed to send rejection email to requester:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("Registry rejection notification error:", e);
+    }
 
     return res.json({ message: "Request rejected by Registry" });
   } catch (e) {
@@ -363,7 +445,12 @@ router.post("/registry/reset-password/:username", authenticateToken, authorizeRo
     const reg = ensureRegistry(req, res);
     if (!reg) return;
 
-    const target = ensureOfficeStaffUser(req.params.username);
+    const target = db.prepare(`
+      SELECT username, role, department
+      FROM users
+      WHERE username = ?
+    `).get(req.params.username);
+
     if (!target) return res.status(404).json({ message: "Staff not found" });
     if (target.role !== "officestaff" || target.department !== "Office") {
       return res.status(403).json({ message: "Forbidden: Can reset only Office Staff" });

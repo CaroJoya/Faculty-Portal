@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { db } = require("../database/init");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const { sendLeaveStatusUpdate, sendNewLeaveRequest } = require("../utils/emailService");
 
 const router = express.Router();
 
@@ -18,6 +19,71 @@ function ensureHod(req, res) {
     return null;
   }
   return department;
+}
+
+function parseDays(reqRow) {
+  if (reqRow.duration_days != null) return Number(reqRow.duration_days);
+  if (reqRow.start_date && reqRow.end_date) {
+    const d = db.prepare(`SELECT (julianday(?) - julianday(?) + 1) AS d`).get(reqRow.end_date, reqRow.start_date).d;
+    return Math.max(0.5, Number(d || 1));
+  }
+  return 1;
+}
+
+function deductLeaveBalance(username, category, days) {
+  if (!["medical", "casual", "earned"].includes((category || "").toLowerCase())) return;
+
+  const d = Number(days || 0);
+  if (category === "medical") {
+    db.prepare(`
+      UPDATE users
+      SET medical_leave_left = MAX(0, COALESCE(medical_leave_left,0) - ?),
+          medical_leave_used = COALESCE(medical_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "casual") {
+    db.prepare(`
+      UPDATE users
+      SET casual_leave_left = MAX(0, COALESCE(casual_leave_left,0) - ?),
+          casual_leave_used = COALESCE(casual_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "earned") {
+    db.prepare(`
+      UPDATE users
+      SET earned_leave_left = MAX(0, COALESCE(earned_leave_left,0) - ?),
+          earned_leave_used = COALESCE(earned_leave_used,0) + ?
+      WHERE username = ?
+    `).run(d, d, username);
+  }
+}
+
+function restoreLeaveBalance(username, category, days) {
+  if (!["medical", "casual", "earned"].includes((category || "").toLowerCase())) return;
+
+  const d = Number(days || 0);
+  if (category === "medical") {
+    db.prepare(`
+      UPDATE users
+      SET medical_leave_left = COALESCE(medical_leave_left,0) + ?,
+          medical_leave_used = MAX(0, COALESCE(medical_leave_used,0) - ?)
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "casual") {
+    db.prepare(`
+      UPDATE users
+      SET casual_leave_left = COALESCE(casual_leave_left,0) + ?,
+          casual_leave_used = MAX(0, COALESCE(casual_leave_used,0) - ?)
+      WHERE username = ?
+    `).run(d, d, username);
+  } else if (category === "earned") {
+    db.prepare(`
+      UPDATE users
+      SET earned_leave_left = COALESCE(earned_leave_left,0) + ?,
+          earned_leave_used = MAX(0, COALESCE(earned_leave_used,0) - ?)
+      WHERE username = ?
+    `).run(d, d, username);
+  }
 }
 
 // ========== 1) GET /api/hod/dashboard-stats ==========
@@ -215,7 +281,7 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
   }
 });
 
-// ========== 4) POST /api/hod/forward-to-principal/:id ==========
+// ========== 4) POST /api/hod/forward-to-principal/:id (HOD approve) ==========
 router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
@@ -225,7 +291,7 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
     const { hod_comments } = req.body;
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department
+      SELECT lr.*, u.username as requester_username, u.full_name as requester_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ? AND u.role = 'faculty' AND u.deleted_at IS NULL
@@ -236,24 +302,62 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
       return res.status(403).json({ message: "Forbidden: Different department" });
     }
     if (row.status !== "Pending") {
-      return res.status(400).json({ message: "Only pending requests can be forwarded" });
+      return res.status(400).json({ message: "Only pending requests can be approved" });
     }
 
-    db.prepare(`
-      UPDATE leave_requests
-      SET
-        hod_approved = 1,
-        hod_comments = ?,
-        hod_approved_by = ?,
-        hod_approved_at = CURRENT_TIMESTAMP,
-        status = 'Pending',
-        final_approver = 'Principal'
-      WHERE id = ?
-    `).run(hod_comments || null, req.user.username, id);
+    const days = parseDays(row);
+    const tx = db.transaction(() => {
+      db.prepare(`
+        UPDATE leave_requests
+        SET
+          hod_approved = 1,
+          hod_comments = ?,
+          hod_approved_by = ?,
+          hod_approved_at = CURRENT_TIMESTAMP,
+          status = 'Approved',
+          approved_at = CURRENT_TIMESTAMP,
+          final_approver = 'HOD'
+        WHERE id = ?
+      `).run(hod_comments || null, req.user.username, id);
 
-    res.json({ message: "Request forwarded to Principal successfully" });
+      // Deduct leave balance here (HOD final decision)
+      if ((row.leave_category || "").toLowerCase() !== "vacation") {
+        deductLeaveBalance(row.user_username, (row.leave_category || "").toLowerCase(), days);
+      }
+    });
+    tx();
+
+    // Notify requester
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, updatedRow, "Approved", hod_comments || "").catch((e) => {
+          console.error("Failed to send approval email to requester:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("HOD post-approve notification error:", e);
+    }
+
+    // Notify principal (so principal can optionally reject before start date)
+    try {
+      const principal = db.prepare("SELECT username, full_name, email FROM users WHERE is_principal = 1 LIMIT 1").get();
+      if (principal && principal.email) {
+        const requester = db.prepare("SELECT username, full_name, email, department FROM users WHERE username = ?").get(row.user_username);
+        const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/principal/all-pending`;
+        const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+        sendNewLeaveRequest(requester, updatedRow, principal, reviewLink).catch((e) => {
+          console.error("Failed to notify Principal of HOD approval:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("Error notifying principal after HOD approval:", e);
+    }
+
+    res.json({ message: "Request approved by HOD" });
   } catch (err) {
-    console.error("HOD forward-to-principal error:", err);
+    console.error("HOD approve error:", err);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
@@ -272,7 +376,7 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
     }
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department
+      SELECT lr.id, lr.status, u.department, lr.user_username
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ? AND u.role = 'faculty' AND u.deleted_at IS NULL
@@ -298,6 +402,19 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
       WHERE id = ?
     `).run(rejection_reason, rejection_reason, req.user.username, id);
 
+    // notify requester
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason).catch((e) => {
+          console.error("Failed to send rejection email to requester:", e?.message || e);
+        });
+      }
+    } catch (e) {
+      console.error("HOD rejection notification error:", e);
+    }
+
     res.json({ message: "Request rejected successfully" });
   } catch (err) {
     console.error("HOD reject-request error:", err);
@@ -305,6 +422,7 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
   }
 });
 
+// Rest of HOD endpoints (faculty-list, add-faculty, reset-password, delete/restore etc.) remain unchanged below...
 // ========== 6) GET /api/hod/faculty-list ==========
 router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
