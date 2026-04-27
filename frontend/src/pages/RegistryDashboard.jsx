@@ -26,8 +26,8 @@ export default function RegistryDashboard() {
         <p className="text-blue-100">{me.department} • Registry</p>
       </section>
 
-      <section className="bg-white rounded-2xl p-5 shadow">
-        <h3 className="text-lg font-bold mb-3">As Employee</h3>
+      <section className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow border border-slate-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold mb-3 text-slate-800 dark:text-white">As Employee</h3>
         <div className="grid md:grid-cols-3 gap-3">
           <Card t="My Pending" v={myStatus.pending} />
           <Card t="My Approved" v={myStatus.approved} />
@@ -42,8 +42,8 @@ export default function RegistryDashboard() {
         </div>
       </section>
 
-      <section className="bg-white rounded-2xl p-5 shadow">
-        <h3 className="text-lg font-bold mb-3">As Admin (Office Department)</h3>
+      <section className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow border border-slate-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold mb-3 text-slate-800 dark:text-white">As Admin (Office Department)</h3>
         <div className="grid md:grid-cols-4 gap-3">
           <Card t="Total Staff" v={admin.total_staff} />
           <Card t="Pending Staff Requests" v={admin.pending_staff_leaves} />
@@ -66,8 +66,20 @@ export default function RegistryDashboard() {
 }
 
 function Card({ t, v }) {
-  return <div className="bg-slate-50 rounded-xl p-4"><p className="text-slate-500 text-sm">{t}</p><p className="text-2xl font-bold">{v}</p></div>;
+  return (
+    <div className="bg-slate-50 dark:bg-gray-900/20 rounded-xl p-4 border border-transparent dark:border-transparent">
+      <p className="text-slate-500 dark:text-slate-300 text-sm">{t}</p>
+      <p className="text-2xl font-bold text-slate-900 dark:text-white">{v}</p>
+    </div>
+  );
 }
 function Q({ to, l }) {
-  return <Link to={to} className="rounded-xl p-3 border bg-white hover:shadow text-sm font-medium">{l}</Link>;
+  return (
+    <Link
+      to={to}
+      className="rounded-xl p-3 border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:shadow text-sm font-medium text-slate-700 dark:text-slate-200"
+    >
+      {l}
+    </Link>
+  );
 }
