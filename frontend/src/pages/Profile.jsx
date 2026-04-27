@@ -1,18 +1,41 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Trash2, RotateCcw, AlertTriangle, Eye, EyeOff, Sun, Moon, User, Mail, Phone, Building2, Calendar as CalendarIcon, Shield } from "lucide-react";
+import {
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  User,
+  Mail,
+  Phone,
+  Building2,
+  Calendar as CalendarIcon,
+  Shield
+} from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function Profile() {
   const token = localStorage.getItem("token");
-  const { theme, toggleTheme } = useTheme();
+
+  const { theme } = useTheme();
+
   const [user, setUser] = useState(null);
-  const [accountStatus, setAccountStatus] = useState(null);
-  const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
+  const [accountStatus, setAccountStatus] = useState({
+    isDeleted: false,
+    canRestore: false
+  });
+
+  const [pw, setPw] = useState({
+    currentPassword: "",
+    newPassword: ""
+  });
+
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -22,19 +45,66 @@ export default function Profile() {
     loadUserData();
   }, []);
 
+  const authHeaders = () => ({
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
   const loadUserData = async () => {
+    if (!token) {
+      setMsgType("error");
+      setMsg("Session missing. Please login again.");
+      return;
+    }
+
     setLoading(true);
+
     try {
-      const [userRes, statusRes] = await Promise.all([
-        axios.get(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${API}/account-status`, { headers: { Authorization: `Bearer ${token}` } })
+      const results = await Promise.allSettled([
+        axios.get(`${API}/me`, authHeaders()),
+        axios.get(`${API}/account-status`, authHeaders())
       ]);
-      setUser(userRes.data);
-      setAccountStatus(statusRes.data);
+
+      const userResult = results[0];
+      const statusResult = results[1];
+
+      // profile data is required
+      if (
+        userResult.status !== "fulfilled" ||
+        !userResult.value?.data
+      ) {
+        throw new Error("User profile request failed");
+      }
+
+      setUser(userResult.value.data);
+
+      // account-status is optional/fallback
+      if (
+        statusResult.status === "fulfilled" &&
+        statusResult.value?.data
+      ) {
+        setAccountStatus(statusResult.value.data);
+      } else {
+        setAccountStatus({
+          isDeleted: false,
+          canRestore: false
+        });
+      }
+
     } catch (err) {
       console.error("Failed to load user data", err);
+
+      if (err?.response?.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
+
       setMsgType("error");
-      setMsg("Failed to load profile data");
+      setMsg(
+        err?.response?.data?.message ||
+        "Failed to load profile data"
+      );
     } finally {
       setLoading(false);
     }
@@ -42,349 +112,167 @@ export default function Profile() {
 
   const changePassword = async (e) => {
     e.preventDefault();
-    setMsg("");
-    setMsgType("");
-    
+
     if (pw.newPassword.length < 6) {
       setMsgType("error");
       setMsg("New password must be at least 6 characters");
       return;
     }
-    
+
     try {
-      const res = await axios.post(`${API}/change-password`, pw, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.post(
+        `${API}/change-password`,
+        pw,
+        authHeaders()
+      );
+
       setMsgType("success");
-      setMsg(res.data.message || "Password updated successfully");
-      setPw({ currentPassword: "", newPassword: "" });
-      setTimeout(() => setMsg(""), 3000);
+      setMsg(
+        res.data.message ||
+        "Password changed successfully"
+      );
+
+      setPw({
+        currentPassword: "",
+        newPassword: ""
+      });
+
     } catch (e2) {
       setMsgType("error");
-      setMsg(e2?.response?.data?.message || "Failed to change password");
+      setMsg(
+        e2?.response?.data?.message ||
+        "Failed to change password"
+      );
     }
   };
 
   const restoreAccount = async () => {
-    setLoading(true);
     try {
-      await axios.post(`${API}/restore-account`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.post(
+        `${API}/restore-account`,
+        {},
+        authHeaders()
+      );
+
       setMsgType("success");
-      setMsg("Account restored successfully! You can now use the portal normally.");
+      setMsg("Account restored successfully.");
+
       await loadUserData();
-      setTimeout(() => {
-        setMsg("");
-        window.location.reload();
-      }, 2000);
-    } catch (err) {
+
+    } catch (e) {
       setMsgType("error");
-      setMsg(err?.response?.data?.message || "Failed to restore account");
-    } finally {
-      setLoading(false);
+      setMsg(
+        e?.response?.data?.message ||
+        "Restore failed"
+      );
     }
   };
 
   const requestDelete = async () => {
-    setLoading(true);
     try {
-      await axios.post(`${API}/request-delete`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.post(
+        `${API}/request-delete`,
+        {},
+        authHeaders()
+      );
+
       setMsgType("success");
-      setMsg("Account deletion requested. Your account has been deactivated. You have 30 days to restore it.");
-      setShowDeleteConfirm(false);
+      setMsg("Deletion request submitted.");
+
       await loadUserData();
-      setTimeout(() => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        window.location.href = "/login";
-      }, 3000);
-    } catch (err) {
+
+    } catch (e) {
       setMsgType("error");
-      setMsg(err?.response?.data?.message || "Failed to delete account");
-      setShowDeleteConfirm(false);
-    } finally {
-      setLoading(false);
+      setMsg(
+        e?.response?.data?.message ||
+        "Delete request failed"
+      );
     }
   };
 
-  // Show account is deleted state - Restore screen
-  if (accountStatus?.isDeleted) {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-2xl p-8 text-center">
-          <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-amber-800 dark:text-amber-400 mb-3">Account Deactivated</h2>
-          <p className="text-amber-700 dark:text-amber-500 mb-2">
-            Your account has been deleted.
-          </p>
-          <p className="text-amber-700 dark:text-amber-500 mb-6 font-semibold">
-            You have {accountStatus.daysUntilPermanent} days left to restore it.
-            After 30 days, the account will be permanently deleted.
-          </p>
-          <button
-            onClick={restoreAccount}
-            disabled={loading}
-            className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl font-semibold transition-all disabled:opacity-50"
-          >
-            <RotateCcw size={20} />
-            {loading ? "Restoring..." : "Restore My Account"}
-          </button>
-        </div>
-        {msg && (
-          <div className={`mt-4 p-3 rounded-xl text-center ${
-            msgType === "success" ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400" : "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400"
-          }`}>
-            {msg}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (loading && !user) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-600 border-t-transparent"></div>
-      </div>
-    );
+  if (loading) {
+    return <div>Loading profile...</div>;
   }
 
   if (!user) {
     return (
-      <div className="text-center py-12">
-        <p className="text-rose-600 dark:text-rose-400">Failed to load profile</p>
+      <div className="p-6">
+        {msg || "Unable to load profile"}
       </div>
     );
   }
 
-  const balances = [
-    { name: "Medical Leave", left: user.medical_leave_left, total: user.medical_leave_total, color: "blue" },
-    { name: "Casual Leave", left: user.casual_leave_left, total: user.casual_leave_total, color: "emerald" },
-    { name: "Earned Leave", left: user.earned_leave_left, total: user.earned_leave_total, color: "amber" }
-  ];
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">My Profile</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">Manage your account information and preferences</p>
+    <div className="space-y-6">
+
+      {msg && (
+        <div className="p-3 rounded-xl border">
+          {msg}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+
+        <h2 className="text-2xl font-bold">
+          My Profile
+        </h2>
+
+        <p><User size={16}/> {user.full_name}</p>
+        <p><Mail size={16}/> {user.email}</p>
+        <p><Phone size={16}/> {user.phone_number || "-"}</p>
+        <p><Building2 size={16}/> {user.department}</p>
+        <p><Shield size={16}/> {user.role}</p>
+        <p><CalendarIcon size={16}/> {user.date_of_joining || "-"}</p>
+
       </div>
 
-      {/* User Info Card */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 dark:border-gray-700 bg-gradient-to-r from-slate-50 to-white dark:from-gray-900 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 flex items-center justify-center">
-              <User className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-slate-800 dark:text-white">Account Information</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Your personal and professional details</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-5">
-          <div className="grid md:grid-cols-2 gap-4">
-            <InfoRow icon={User} label="Full Name" value={user.full_name} />
-            <InfoRow icon={Mail} label="Email" value={user.email} />
-            <InfoRow icon={Building2} label="Department" value={user.department} />
-            <InfoRow icon={Shield} label="Designation" value={user.designation || "Faculty"} />
-            <InfoRow icon={Shield} label="Role" value={user.role?.charAt(0).toUpperCase() + user.role?.slice(1)} />
-            <InfoRow icon={CalendarIcon} label="Joined" value={user.date_of_joining || user.created_at?.split("T")[0] || "-"} />
-            <InfoRow icon={Phone} label="Phone" value={user.phone_number || "Not provided"} />
-          </div>
-        </div>
-      </div>
+      <form
+        onSubmit={changePassword}
+        className="bg-white rounded-2xl shadow p-6 space-y-4"
+      >
+        <h3 className="text-xl font-semibold">
+          Change Password
+        </h3>
 
-      {/* Leave Balances Card */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 dark:border-gray-700">
-          <h2 className="font-semibold text-slate-800 dark:text-white">Leave Balances</h2>
-        </div>
-        <div className="p-5 space-y-4">
-          {balances.map((bal) => {
-            const percentage = bal.total ? Math.max(0, Math.min(100, (bal.left / bal.total) * 100)) : 0;
-            const colors = {
-              blue: "bg-blue-500",
-              emerald: "bg-emerald-500",
-              amber: "bg-amber-500"
-            };
-            return (
-              <div key={bal.name}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-600 dark:text-slate-400">{bal.name}</span>
-                  <span className="font-medium text-slate-800 dark:text-white">{bal.left} / {bal.total}</span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-gray-700 rounded-full h-2.5">
-                  <div className={`${colors[bal.color]} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+        <input
+          type={showCurrentPassword ? "text":"password"}
+          placeholder="Current Password"
+          value={pw.currentPassword}
+          onChange={(e)=>
+            setPw({
+              ...pw,
+              currentPassword:e.target.value
+            })
+          }
+        />
 
-      {/* Theme Preference Card */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 dark:border-gray-700">
-          <h2 className="font-semibold text-slate-800 dark:text-white">Appearance</h2>
-        </div>
-        <div className="p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {theme === "light" ? <Sun size={24} className="text-amber-500" /> : <Moon size={24} className="text-indigo-400" />}
-              <div>
-                <p className="font-medium text-slate-800 dark:text-white">
-                  {theme === "light" ? "Light Mode" : "Dark Mode"}
-                </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Switch between light and dark appearance
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={toggleTheme}
-              className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-gray-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gray-600 transition-all"
-            >
-              Switch to {theme === "light" ? "Dark" : "Light"}
-            </button>
-          </div>
-        </div>
-      </div>
+        <input
+          type={showNewPassword ? "text":"password"}
+          placeholder="New Password"
+          value={pw.newPassword}
+          onChange={(e)=>
+            setPw({
+              ...pw,
+              newPassword:e.target.value
+            })
+          }
+        />
 
-      {/* Change Password Card */}
-      <form onSubmit={changePassword} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-5 border-b border-slate-200 dark:border-gray-700">
-          <h2 className="font-semibold text-slate-800 dark:text-white">Change Password</h2>
-        </div>
-        <div className="p-5 space-y-4">
-          {/* Current Password */}
-          <div className="relative">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Current Password
-            </label>
-            <div className="relative">
-              <input 
-                type={showCurrentPassword ? "text" : "password"} 
-                className="w-full border border-slate-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none pr-10"
-                value={pw.currentPassword} 
-                onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} 
-                required 
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400"
-              >
-                {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-          
-          {/* New Password */}
-          <div className="relative">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              New Password (min 6 characters)
-            </label>
-            <div className="relative">
-              <input 
-                type={showNewPassword ? "text" : "password"} 
-                className="w-full border border-slate-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none pr-10"
-                value={pw.newPassword} 
-                onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} 
-                required 
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400"
-              >
-                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-          
-          {msg && (
-            <div className={`p-3 rounded-xl text-sm ${
-              msgType === "success" 
-                ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                : "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
-            }`}>
-              {msg}
-            </div>
-          )}
-          
-          <button 
-            type="submit"
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white py-2.5 rounded-xl font-medium transition-all"
-          >
-            Update Password
-          </button>
-        </div>
+        <button type="submit">
+          Update Password
+        </button>
       </form>
 
-      {/* Danger Zone - Delete Account Card */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-rose-200 dark:border-rose-800 overflow-hidden">
-        <div className="p-5 border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/20">
-          <div className="flex items-center gap-2">
-            <Trash2 size={18} className="text-rose-600 dark:text-rose-400" />
-            <h2 className="font-semibold text-rose-700 dark:text-rose-400">Danger Zone</h2>
-          </div>
-        </div>
-        <div className="p-5">
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-            Once you delete your account, it will be deactivated immediately. 
-            You will have <strong className="text-rose-600 dark:text-rose-400">30 days</strong> to restore it before permanent deletion.
-            During this time, you cannot log in until you restore your account.
-          </p>
-          
-          {!showDeleteConfirm ? (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
-            >
-              Request Account Deletion
-            </button>
-          ) : (
-            <div className="space-y-3 bg-rose-50 dark:bg-rose-950/30 rounded-xl p-4 border border-rose-200 dark:border-rose-800">
-              <p className="text-sm text-rose-700 dark:text-rose-400 font-medium">
-                ⚠️ Are you absolutely sure? This action cannot be undone for 30 days.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={requestDelete}
-                  disabled={loading}
-                  className="bg-rose-700 hover:bg-rose-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-                >
-                  {loading ? "Processing..." : "Yes, Delete My Account"}
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-slate-200 px-5 py-2 rounded-lg text-sm font-medium transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+      {accountStatus?.canRestore && (
+        <button onClick={restoreAccount}>
+          Restore Account
+        </button>
+      )}
 
-function InfoRow({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-start gap-3">
-      <Icon size={18} className="text-slate-400 dark:text-slate-500 mt-0.5" />
-      <div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">{label}</p>
-        <p className="text-sm text-slate-800 dark:text-white font-medium mt-0.5">{value || "-"}</p>
-      </div>
+      <button onClick={requestDelete}>
+        Request Delete
+      </button>
+
     </div>
   );
 }

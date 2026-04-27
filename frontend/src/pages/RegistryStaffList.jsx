@@ -26,7 +26,7 @@ export default function RegistryStaffList() {
   }, [rows, q]);
 
   const resetPwd = async (username) => {
-    if (!confirm(`Reset password for ${username}?`)) return;
+    if (!window.confirm(`Reset password for ${username}?`)) return;
     try {
       await api.post(`/registry/reset-password/${username}`);
       alert("Password reset to password123");
@@ -36,7 +36,7 @@ export default function RegistryStaffList() {
   };
 
   const softDelete = async (username, fullName) => {
-    if (!confirm(`Delete staff ${fullName}? They can be restored within 30 days.`)) return;
+    if (!window.confirm(`Delete staff ${fullName}? They can be restored within 30 days.`)) return;
     try {
       await api.delete(`/registry/delete-staff/${username}`);
       alert(`Staff ${fullName} soft deleted successfully.`);
@@ -47,7 +47,7 @@ export default function RegistryStaffList() {
   };
 
   const restoreStaff = async (username, fullName) => {
-    if (!confirm(`Restore staff ${fullName}?`)) return;
+    if (!window.confirm(`Restore staff ${fullName}?`)) return;
     try {
       await api.post(`/registry/restore-staff/${username}`);
       alert(`Staff ${fullName} restored successfully.`);
@@ -71,7 +71,7 @@ export default function RegistryStaffList() {
             onClick={() => setShowDeleted(!showDeleted)}
             className={`px-4 py-2 rounded-xl ${showDeleted ? "bg-amber-600 text-white" : "bg-gray-200 text-gray-700"}`}
           >
-            {showDeleted ? "Showing Deleted" : "Show Deleted Staff"}
+            {showDeleted ? "Showing Deleted Staff" : "Show Deleted Staff"}
           </button>
           <Link to="/registry-admin/add-staff" className="bg-brand-600 text-white px-4 py-2 rounded-xl">
             Add New Staff
@@ -79,9 +79,13 @@ export default function RegistryStaffList() {
         </div>
       </div>
 
-      <input className="border rounded-xl p-3 w-full bg-white" placeholder="Search by name/email/designation" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input
+        className="border rounded-xl p-3 w-full bg-white"
+        placeholder="Search by name/email/designation"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
 
-      {/* Active Staff Table */}
       {!showDeleted && (
         <div className="bg-white rounded-2xl p-4 shadow overflow-auto">
           <h3 className="font-bold text-lg mb-3">Active Staff</h3>
@@ -93,7 +97,7 @@ export default function RegistryStaffList() {
                 <th>Balances</th>
                 <th>History</th>
                 <th>Actions</th>
-               </tr>
+              </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
@@ -101,27 +105,30 @@ export default function RegistryStaffList() {
                   <td className="py-2">
                     {r.full_name}
                     <div className="text-slate-500">{r.designation}</div>
-                   </td>
+                  </td>
                   <td>
                     {r.email}
                     <div>{r.phone_number || "-"}</div>
-                   </td>
+                  </td>
                   <td>M:{r.medical_leave_left} C:{r.casual_leave_left} E:{r.earned_leave_left}</td>
                   <td>A:{r.approved_count} P:{r.pending_count}</td>
                   <td className="space-x-2">
                     <button onClick={() => resetPwd(r.username)} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded">Reset</button>
                     <button onClick={() => softDelete(r.username, r.full_name)} className="px-2 py-1 bg-rose-100 text-rose-700 rounded">Delete</button>
                     <button onClick={() => viewHistory(r)} className="px-2 py-1 bg-blue-100 text-blue-700 rounded">History</button>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={5} className="py-3 text-slate-500">No active staff found.</td></tr>}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-3 text-slate-500">No active staff found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Deleted Staff Table */}
       {showDeleted && (
         <div className="bg-white rounded-2xl p-4 shadow overflow-auto">
           <h3 className="font-bold text-lg mb-3">Deleted Staff (Restorable within 30 days)</h3>
@@ -134,7 +141,7 @@ export default function RegistryStaffList() {
                 <th>Restored At</th>
                 <th>Total Leaves Taken</th>
                 <th>Actions</th>
-               </tr>
+              </tr>
             </thead>
             <tbody>
               {deletedRows.map((r) => (
@@ -142,28 +149,30 @@ export default function RegistryStaffList() {
                   <td className="py-2">
                     <p className="font-semibold">{r.full_name}</p>
                     <p className="text-slate-500">{r.email}</p>
-                   </td>
+                  </td>
                   <td>
-                    <p>{r.deleted_by_name || r.deleted_by}</p>
-                    <p className="text-xs text-slate-500">{new Date(r.deleted_at).toLocaleString()}</p>
-                   </td>
-                  <td>{new Date(r.deleted_at).toLocaleDateString()}</td>
-                  <td>{r.restored_at ? new Date(r.restored_at).toLocaleDateString() : "-"}</td>
-                  <td>{r.total_leaves_taken} leaves ({r.total_days_consumed} days)</td>
+                    <p>{r.deleted_by_name || r.deleted_by || "-"}</p>
+                  </td>
+                  <td>{r.deleted_at ? new Date(r.deleted_at).toLocaleString() : "-"}</td>
+                  <td>{r.restored_at ? new Date(r.restored_at).toLocaleString() : "-"}</td>
+                  <td>{r.total_leaves_taken || 0} leaves ({r.total_days_consumed || 0} days)</td>
                   <td>
                     <button onClick={() => restoreStaff(r.username, r.full_name)} className="px-2 py-1 rounded bg-emerald-100 text-emerald-700">
                       Restore
                     </button>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ))}
-              {deletedRows.length === 0 && <tr><td colSpan={6} className="py-3 text-slate-500">No deleted staff found.</td></tr>}
+              {deletedRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-3 text-slate-500">No deleted staff found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* History Modal */}
       {showHistoryModal && selectedStaff && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-3xl bg-white rounded-2xl p-5 max-h-[80vh] overflow-auto">
@@ -180,7 +189,7 @@ export default function RegistryStaffList() {
                     <th>Type</th>
                     <th>Duration</th>
                     <th>Status</th>
-                   </tr>
+                  </tr>
                 </thead>
                 <tbody>
                   {selectedStaff.leave_history?.map((leave) => (
@@ -190,7 +199,7 @@ export default function RegistryStaffList() {
                       <td>{leave.leave_type}</td>
                       <td>{leave.duration_days} days</td>
                       <td>{leave.status}</td>
-                     </tr>
+                    </tr>
                   ))}
                   {(!selectedStaff.leave_history || selectedStaff.leave_history.length === 0) && (
                     <tr><td colSpan={5} className="py-3 text-slate-500">No leave history found.</td></tr>

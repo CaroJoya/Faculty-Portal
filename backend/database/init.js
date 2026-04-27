@@ -67,6 +67,7 @@ function createTables() {
       total_vacation_earned REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       deleted_at DATETIME,
+      delete_requested_at DATETIME,
       deleted_by TEXT,
       restored_at DATETIME,
       restored_by TEXT
@@ -305,6 +306,10 @@ function runSafeMigrations() {
   if (!hasColumn("users", "deleted_at")) {
     db.prepare(`ALTER TABLE users ADD COLUMN deleted_at DATETIME`).run();
     console.log("Migration: added users.deleted_at");
+  }
+  if (!hasColumn("users", "delete_requested_at")) {
+    db.prepare(`ALTER TABLE users ADD COLUMN delete_requested_at DATETIME`).run();
+    console.log("Migration: added users.delete_requested_at");
   }
   if (!hasColumn("users", "deleted_by")) {
     db.prepare(`ALTER TABLE users ADD COLUMN deleted_by TEXT`).run();

@@ -409,6 +409,7 @@ router.delete("/registry/delete-staff/:username", authenticateToken, authorizeRo
     db.prepare(`
       UPDATE users
       SET deleted_at = CURRENT_TIMESTAMP,
+          delete_requested_at = CURRENT_TIMESTAMP,
           deleted_by = ?
       WHERE username = ?
     `).run(req.user.username, targetUsername);
@@ -461,6 +462,7 @@ router.post("/registry/restore-staff/:username", authenticateToken, authorizeRol
     db.prepare(`
       UPDATE users
       SET deleted_at = NULL,
+          delete_requested_at = NULL,
           deleted_by = NULL,
           restored_at = CURRENT_TIMESTAMP,
           restored_by = ?
