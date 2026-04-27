@@ -107,12 +107,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-sm text-slate-600 mt-5 text-center">
-          New user?{" "}
-          <Link className="text-brand-700 font-semibold hover:underline" to="/register">
-            Create an account
-          </Link>
-        </p>
+        {/* Removed self-signup link: new users should not be able to create accounts */}
       </div>
     </div>
   );
