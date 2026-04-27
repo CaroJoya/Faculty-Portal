@@ -5,19 +5,77 @@ import api from "../api/axios";
 export default function RegistryDashboard() {
   const [me, setMe] = useState(null);
   const [myStatus, setMyStatus] = useState({ pending: 0, approved: 0, rejected: 0 });
-  const [admin, setAdmin] = useState(null);
+  const [admin, setAdmin] = useState({
+    total_staff: 0,
+    pending_staff_leaves: 0,
+    approved_staff_leaves: 0,
+    rejected_staff_leaves: 0,
+    medical_count: 0,
+    casual_count: 0,
+    earned_count: 0
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([api.get("/me"), api.get("/leave-requests/status"), api.get("/registry/dashboard-stats")]).then(
-      ([m, s, a]) => {
-        setMe(m.data);
-        setMyStatus(s.data);
-        setAdmin(a.data);
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const results = await Promise.allSettled([
+          api.get("/me"),
+          api.get("/leave-requests/status"),
+          api.get("/registry/dashboard-stats")
+        ]);
+
+        const [mRes, sRes, aRes] = results;
+
+        if (!mounted) return;
+
+        if (mRes.status === "fulfilled") {
+          setMe(mRes.value.data);
+        } else {
+          console.warn("RegistryDashboard: /me failed", mRes.reason);
+          setMe(null);
+        }
+
+        if (sRes.status === "fulfilled") {
+          setMyStatus(sRes.value.data || { pending: 0, approved: 0, rejected: 0 });
+        } else {
+          console.warn("RegistryDashboard: /leave-requests/status failed", sRes.reason);
+          setMyStatus({ pending: 0, approved: 0, rejected: 0 });
+        }
+
+        if (aRes.status === "fulfilled") {
+          setAdmin(aRes.value.data || {
+            total_staff: 0,
+            pending_staff_leaves: 0,
+            approved_staff_leaves: 0,
+            rejected_staff_leaves: 0,
+            medical_count: 0,
+            casual_count: 0,
+            earned_count: 0
+          });
+        } else {
+          console.warn("RegistryDashboard: /registry/dashboard-stats failed", aRes.reason);
+          // Keep safe defaults already set
+        }
+      } catch (err) {
+        console.error("RegistryDashboard load error:", err);
+      } finally {
+        if (mounted) setLoading(false);
       }
-    );
+    })();
+
+    return () => { mounted = false; };
   }, []);
 
-  if (!me || !admin) return <div>Loading...</div>;
+  if (loading) return <div>Loading...</div>;
+  if (!me) return <div className="text-center py-12">
+    <p className="text-slate-500 dark:text-slate-400">Unable to load user profile. Please login again.</p>
+    <Link to="/login" className="mt-4 inline-block bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-xl transition-all">
+      Login
+    </Link>
+  </div>;
 
   return (
     <div className="space-y-6">

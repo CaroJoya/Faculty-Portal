@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import api from "../api/axios";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,26 +15,56 @@ import { TrendingUp, Calendar, Award, Clock, Heart, Sun, Briefcase } from "lucid
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend, Filler);
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
 export default function Stats() {
-  const token = localStorage.getItem("token");
   const [me, setMe] = useState(null);
   const [monthly, setMonthly] = useState([]);
   const [approved, setApproved] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      axios.get(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } }),
-      axios.get(`${API}/leave-requests/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-      axios.get(`${API}/leave-requests/history`, { headers: { Authorization: `Bearer ${token}` } })
-    ]).then(([m, s, h]) => {
-      setMe(m.data);
-      setMonthly(s.data || []);
-      setApproved(h.data || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    let mounted = true;
+    setLoading(true);
+    (async () => {
+      try {
+        const results = await Promise.allSettled([
+          api.get("/me"),
+          api.get("/leave-requests/stats"),
+          api.get("/leave-requests/history")
+        ]);
+
+        const [meRes, statsRes, histRes] = results;
+
+        if (!mounted) return;
+
+        if (meRes.status === "fulfilled") {
+          setMe(meRes.value.data);
+        } else {
+          // keep me as null - UI will show "Unable to load statistics"
+          console.warn("Stats: /me request failed", meRes.reason);
+        }
+
+        if (statsRes.status === "fulfilled") {
+          // Expecting an array; guard if backend returns other structure
+          setMonthly(Array.isArray(statsRes.value.data) ? statsRes.value.data : []);
+        } else {
+          console.warn("Stats: /leave-requests/stats failed", statsRes.reason);
+          setMonthly([]);
+        }
+
+        if (histRes.status === "fulfilled") {
+          setApproved(Array.isArray(histRes.value.data) ? histRes.value.data : []);
+        } else {
+          console.warn("Stats: /leave-requests/history failed", histRes.reason);
+          setApproved([]);
+        }
+      } catch (e) {
+        console.error("Stats load error:", e);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => { mounted = false; };
   }, []);
 
   const totalLeaves = useMemo(() => {
@@ -53,15 +83,26 @@ export default function Stats() {
     return ((usedLeaves / total) * 100).toFixed(1);
   }, [totalLeaves, usedLeaves]);
 
+  const safeLabelForMonth = (m) => {
+    if (!m) return "N/A";
+    if (m.month) {
+      const parts = String(m.month).split("-");
+      if (parts.length >= 2) {
+        const [year, month] = parts;
+        return `${month}/${year}`;
+      }
+      return String(m.month);
+    }
+    // fallback if backend returns label or name
+    return m.label || m.name || "N/A";
+  };
+
   const barChartData = {
-    labels: monthly.map((m) => {
-      const [year, month] = m.month.split("-");
-      return `${month}/${year}`;
-    }),
+    labels: monthly.map((m) => safeLabelForMonth(m)),
     datasets: [
       {
         label: "Leave Requests",
-        data: monthly.map((m) => m.total_requests),
+        data: monthly.map((m) => Number(m.total_requests || 0)),
         backgroundColor: "rgba(43, 83, 230, 0.8)",
         borderRadius: 8,
         barPercentage: 0.6,
@@ -99,9 +140,9 @@ export default function Stats() {
     datasets: [
       {
         data: [
-          me?.medical_leave_left || 0,
-          me?.casual_leave_left || 0,
-          me?.earned_leave_left || 0
+          Number(me?.medical_leave_left || 0),
+          Number(me?.casual_leave_left || 0),
+          Number(me?.earned_leave_left || 0)
         ],
         backgroundColor: ["#3b82f6", "#10b981", "#f59e0b"],
         borderWidth: 0,
