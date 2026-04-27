@@ -192,12 +192,22 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Logo and Brand */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 flex items-center justify-center shadow-md">
-                <GraduationCap className="w-5 h-5 text-white" />
+              {/* Use college logo image instead of gradient icon */}
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white">
+                <img
+                  src="/college-logo.png"
+                  alt="PCE College Logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    // Fallback to icon if image missing
+                    e.target.onerror = null;
+                    e.target.style.display = "none";
+                  }}
+                />
               </div>
               <div className="hidden sm:block">
                 <h1 className="text-xl font-bold bg-gradient-to-r from-brand-700 to-indigo-700 dark:from-brand-400 dark:to-indigo-400 bg-clip-text text-transparent">
-                  PCE Faculty Leave Portal
+                  PCE faculty leave portal
                 </h1>
                 <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                   {roleIcon}
@@ -252,9 +262,19 @@ export default function Navbar() {
           <div className="fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-900 shadow-2xl p-4">
             <div className="flex flex-col h-full">
               <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-gray-800">
-                <div>
-                  <h2 className="font-bold text-lg dark:text-white">Menu</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{user?.full_name}</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-white">
+                    <img
+                      src="/college-logo.png"
+                      alt="PCE College Logo"
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+                    />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-lg dark:text-white">Menu</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{user?.full_name}</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}

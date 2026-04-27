@@ -4,7 +4,7 @@ const MAIL_HOST = process.env.MAIL_HOST;
 const MAIL_PORT = Number(process.env.MAIL_PORT || 587);
 const MAIL_USER = process.env.MAIL_USER;
 const MAIL_PASS = process.env.MAIL_PASS;
-const MAIL_FROM = process.env.MAIL_FROM || `PCE Faculty Portal <${MAIL_USER || "no-reply@localhost"}>`;
+const MAIL_FROM = process.env.MAIL_FROM || `PCE Faculty Leave Portal <${MAIL_USER || "no-reply@localhost"}>`;
 
 const mailEnabled = !!(MAIL_HOST && MAIL_PORT && MAIL_USER && MAIL_PASS);
 
@@ -35,7 +35,7 @@ function shell({ title, subtitle, bodyHtml }) {
         ${bodyHtml}
       </div>
       <div style="padding:14px 20px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">
-        PCE Faculty Portal
+        PCE Faculty Leave Portal
       </div>
     </div>
   </div>
@@ -102,7 +102,7 @@ function buildLeaveStatusUpdateTemplate(user, leaveRequest, status, comments = "
       <p><b>Category:</b> ${leaveRequest.leave_category || "-"}</p>
       <p><b>Reason:</b> ${leaveRequest.reason || "-"}</p>
       <p><b>Comments:</b> ${comments || "-"}</p>
-      <a href="${process.env.FRONTEND_URL || "http://localhost:5173/login"}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Login</a>
+      <a href="${process.env.FRONTEND_URL || "http://localhost:5173/login"}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Open Portal</a>
     `
   });
 }
@@ -191,7 +191,7 @@ function buildPasswordResetTemplate(user, resetLink) {
       <p style="color: #555;">This link will expire in <strong>1 hour</strong>.</p>
       <p style="color: #888; font-size: 12px;">If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
       <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
-      <p style="color: #999; font-size: 11px; text-align: center;">Faculty Leave Portal</p>
+      <p style="color: #999; font-size: 11px; text-align: center;">PCE Faculty Leave Portal</p>
     </div>
   `;
 }
@@ -199,7 +199,7 @@ function buildPasswordResetTemplate(user, resetLink) {
 // Update the sendPasswordResetEmail function
 async function sendPasswordResetEmail(user, resetLink) {
   const html = buildPasswordResetTemplate(user, resetLink);
-  return sendEmail(user.email, "Reset Your Password - Faculty Portal", html);
+  return sendEmail(user.email, "Reset Your Password - PCE Faculty Leave Portal", html);
 }
 
 module.exports = {

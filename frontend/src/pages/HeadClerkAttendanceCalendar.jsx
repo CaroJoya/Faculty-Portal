@@ -268,7 +268,7 @@ export default function HeadClerkAttendanceCalendar() {
         </tbody>
       </table>
       <div class="footer">
-        This report is generated automatically by the Faculty Leave Portal. For queries, contact the Head Clerk.
+        This report is generated automatically by the PCE Faculty Leave Portal. For queries, contact the Head Clerk.
       </div>
       </body>
       </html>

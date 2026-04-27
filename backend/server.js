@@ -46,7 +46,7 @@ app.use("/uploads", express.static(uploadDir));
 
 // Health
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, message: "Faculty Leave Portal API running" });
+  res.json({ ok: true, message: "PCE Faculty Leave Portal API running" });
 });
 
 // Routes
