@@ -19,10 +19,10 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 export default function HODDashboard() {
   const token = localStorage.getItem("token");
   const [stats, setStats] = useState({
-    totalFaculty: 0,
-    pendingRequests: 0,
-    approvedRequests: 0,
-    rejectedRequests: 0,
+    total_faculty: 0,
+    pending_faculty_leaves: 0,
+    approved_faculty_leaves: 0,
+    rejected_faculty_leaves: 0,
     department: ""
   });
   const [recentRequests, setRecentRequests] = useState([]);
@@ -46,7 +46,15 @@ export default function HODDashboard() {
       const requestsRes = await axios.get(`${API}/hod/faculty-requests?limit=5`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setRecentRequests(requestsRes.data);
+
+      const normalized = (requestsRes.data || [])
+        .slice(0, 5)
+        .map(r => ({
+          ...r,
+          statusLower: String(r.status || "").toLowerCase()
+        }));
+
+      setRecentRequests(normalized);
     } catch (err) {
       console.error("Failed to load dashboard data", err);
       setError(err?.response?.data?.message || "Failed to load dashboard data");
@@ -81,25 +89,25 @@ export default function HODDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Faculty"
-          value={stats.totalFaculty}
+          value={stats.total_faculty}
           icon={Users}
           color="blue"
         />
         <StatCard
           title="Pending Requests"
-          value={stats.pendingRequests}
+          value={stats.pending_faculty_leaves}
           icon={Clock}
           color="amber"
         />
         <StatCard
           title="Approved"
-          value={stats.approvedRequests}
+          value={stats.approved_faculty_leaves}
           icon={CheckCircle}
           color="emerald"
         />
         <StatCard
           title="Rejected"
-          value={stats.rejectedRequests}
+          value={stats.rejected_faculty_leaves}
           icon={XCircle}
           color="rose"
         />
@@ -132,7 +140,7 @@ export default function HODDashboard() {
               ))
             ) : (
               <div className="text-center py-8 text-slate-400 dark:text-slate-500">
-                No pending requests
+                No requests found
               </div>
             )}
           </div>
@@ -193,20 +201,22 @@ function RequestCard({ request }) {
     rejected: "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400"
   };
 
+  const normalized = request.statusLower || "pending";
+
   return (
     <Link to={`/hod-admin/faculty-requests/${request.id}`} className="block">
       <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-900/50 rounded-xl hover:bg-slate-100 dark:hover:bg-gray-800 transition-all">
         <div className="flex-1">
-          <p className="font-medium text-slate-800 dark:text-white">{request.faculty_name}</p>
+          <p className="font-medium text-slate-800 dark:text-white">{request.full_name}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
             {request.leave_category} • {request.start_date} → {request.end_date}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusColors[request.status] || statusColors.pending}`}>
-            {request.status}
+          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusColors[normalized] || statusColors.pending}`}>
+            {normalized}
           </span>
-          <span className="text-xs text-slate-400">{request.days} days</span>
+          <span className="text-xs text-slate-400">{request.duration_days || "-"} days</span>
         </div>
       </div>
     </Link>

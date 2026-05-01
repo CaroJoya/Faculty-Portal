@@ -84,15 +84,23 @@ router.get("/principal/dashboard-stats", authenticateToken, authorizeRoles("prin
   try {
     if (!ensurePrincipal(req, res)) return;
 
-    const total_pending = db.prepare(`SELECT COUNT(*) c FROM leave_requests WHERE status='Pending'`).get().c;
+    const today = new Date().toISOString().slice(0, 10);
+    const pendingWhere = `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver='HOD' AND date(lr.start_date) > date(?)))`;
+
+    const total_pending = db.prepare(`
+      SELECT COUNT(*) c
+      FROM leave_requests lr
+      JOIN users u ON u.username = lr.user_username
+      WHERE ${pendingWhere}
+    `).get(today).c;
 
     const byRole = db.prepare(`
       SELECT u.role, COUNT(*) c
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.status='Pending'
+      WHERE ${pendingWhere}
       GROUP BY u.role
-    `).all();
+    `).all(today);
 
     const roleMap = Object.fromEntries(byRole.map(x => [x.role, x.c]));
 
@@ -100,18 +108,18 @@ router.get("/principal/dashboard-stats", authenticateToken, authorizeRoles("prin
       SELECT DISTINCT u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.status='Pending'
+      WHERE ${pendingWhere}
       ORDER BY u.department
-    `).all().map(r => r.department);
+    `).all(today).map(r => r.department);
 
     const recent_requests = db.prepare(`
       SELECT lr.*, u.full_name, u.email, u.department, u.role
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.status='Pending'
+      WHERE ${pendingWhere}
       ORDER BY lr.created_at DESC
       LIMIT 5
-    `).all();
+    `).all(today);
 
     return res.json({
       total_pending,
@@ -178,9 +186,12 @@ router.get("/principal/all-pending", authenticateToken, authorizeRoles("principa
     const p = Math.max(1, Number(page));
     const ps = Math.max(1, Math.min(100, Number(pageSize)));
     const offset = (p - 1) * ps;
+    const today = new Date().toISOString().slice(0, 10);
 
-    const where = [`lr.status='Pending'`];
-    const vals = [];
+    const where = [
+      `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver='HOD' AND date(lr.start_date) > date(?)))`
+    ];
+    const vals = [today];
 
     if (search) {
       where.push(`(u.full_name LIKE ? OR u.email LIKE ? OR u.department LIKE ?)`);
@@ -450,7 +461,7 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       WHERE id=?
     `).run(admin_comments, id);
 
-    // Notify requester
+    // Notify requester only (faculty)
     try {
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
@@ -459,20 +470,6 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       }
     } catch (e) {
       console.error("Principal final-reject notification to requester failed:", e);
-    }
-
-    // Notify HOD/Registry who originally approved (if present)
-    try {
-      const approverUsername = row.hod_approved_by;
-      if (approverUsername) {
-        const approver = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(approverUsername);
-        const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
-        if (approver && approver.email) {
-          sendLeaveStatusUpdate(approver, updatedRow, "Rejected", `Principal has rejected this request: ${admin_comments}`).catch((e) => console.error(e));
-        }
-      }
-    } catch (e) {
-      console.error("Principal final-reject notification to approver failed:", e);
     }
 
     res.json({ message: "Leave finally rejected by Principal" });

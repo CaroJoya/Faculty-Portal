@@ -205,8 +205,6 @@ router.get("/hod/faculty-requests", authenticateToken, authorizeRoles("hod"), (r
       WHERE u.role = 'faculty'
         AND u.department = ?
         AND u.deleted_at IS NULL
-        AND lr.status = 'Pending'
-        AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
     `).all(hodDepartment);
 

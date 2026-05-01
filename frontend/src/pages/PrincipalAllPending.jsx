@@ -33,11 +33,11 @@ export default function PrincipalAllPending() {
   const [comments, setComments] = useState("");
   const [processing, setProcessing] = useState(false);
   const [stats, setStats] = useState({});
-
+  
   useEffect(() => {
     loadRequests();
   }, []);
-
+  
   useEffect(() => {
     filterRequests();
   }, [searchTerm, roleFilter, departmentFilter, requests]);
@@ -96,6 +96,11 @@ export default function PrincipalAllPending() {
 
   const approveRequest = async () => {
     if (!selectedRequest) return;
+
+    if (selectedRequest.status === "Approved" && selectedRequest.final_approver === "HOD") {
+      alert("This request is already approved by HOD. Principal can only reject before the start date.");
+      return;
+    }
     
     setProcessing(true);
     try {
@@ -181,7 +186,7 @@ export default function PrincipalAllPending() {
 
       const reason = window.prompt(`Provide rejection reason for ${req.full_name}:`);
       if (!reason || !reason.trim()) return alert("Rejection reason is required");
-
+      
       setProcessing(true);
       // call final-reject for all roles (principal handles mapping)
       await axios.post(`${API}/principal/final-reject/${req.id}`, 
@@ -336,6 +341,7 @@ export default function PrincipalAllPending() {
                   else if (req.hod_approved) approverLabel = req.hod_approved_by ? `HOD/Registry (${req.hod_approved_by})` : "HOD/Registry";
                   
                   const highlighted = Boolean(req.hod_approved || (req.final_approver && (req.final_approver === "HOD" || req.final_approver === "Registry")));
+                  const hodApprovedFinal = req.status === "Approved" && req.final_approver === "HOD";
 
                   return (
                     <tr key={req.id} className={`hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${highlighted ? "bg-slate-50 dark:bg-gray-900/20" : ""}`}>
@@ -375,12 +381,17 @@ export default function PrincipalAllPending() {
                           {/* Existing modal-based actions */}
                           <button
                             onClick={() => {
+                              if (hodApprovedFinal) {
+                                alert("Already approved by HOD. Principal can only reject before start date.");
+                                return;
+                              }
                               setSelectedRequest(req);
                               setActionType("approve");
                               setComments("");
                             }}
-                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
-                            title="Approve"
+                            className={`p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors ${hodApprovedFinal ? "opacity-50 cursor-not-allowed" : ""}`}
+                            title={hodApprovedFinal ? "Already approved by HOD" : "Approve"}
+                            disabled={hodApprovedFinal}
                           >
                             <CheckCircle size={18} />
                           </button>
@@ -476,6 +487,8 @@ export default function PrincipalAllPending() {
                 <p><span className="font-medium">Employee:</span> {selectedRequest.full_name}</p>
                 <p><span className="font-medium">Department:</span> {selectedRequest.department}</p>
                 <p><span className="font-medium">Role:</span> {selectedRequest.role}</p>
+                <p><span className="font-medium">Status:</span> {selectedRequest.status}</p>
+                <p><span className="font-medium">Final Approver:</span> {selectedRequest.final_approver || "-"}</p>
                 <p><span className="font-medium">Period:</span> {selectedRequest.start_date} → {selectedRequest.end_date}</p>
                 <p><span className="font-medium">Leave Type:</span> {selectedRequest.leave_category} ({selectedRequest.leave_type})</p>
                 <p><span className="font-medium">Reason:</span> {selectedRequest.reason || "-"}</p>

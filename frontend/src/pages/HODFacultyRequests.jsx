@@ -38,12 +38,18 @@ export default function HODFacultyRequests() {
       const res = await axios.get(`${API}/hod/faculty-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setRequests(res.data);
+
+      const normalized = (res.data || []).map(r => ({
+        ...r,
+        statusLower: String(r.status || "").toLowerCase()
+      }));
+
+      setRequests(normalized);
       
-      // Calculate stats
-      const pending = res.data.filter(r => r.status === "pending").length;
-      const approved = res.data.filter(r => r.status === "approved").length;
-      const rejected = res.data.filter(r => r.status === "rejected").length;
+      // Calculate stats (use normalized status)
+      const pending = normalized.filter(r => r.statusLower === "pending").length;
+      const approved = normalized.filter(r => r.statusLower === "approved").length;
+      const rejected = normalized.filter(r => r.statusLower === "rejected").length;
       setStats({ pending, approved, rejected });
     } catch (err) {
       console.error("Failed to load requests", err);
@@ -56,13 +62,13 @@ export default function HODFacultyRequests() {
     let filtered = [...requests];
     
     if (statusFilter !== "all") {
-      filtered = filtered.filter(r => r.status === statusFilter);
+      filtered = filtered.filter(r => r.statusLower === statusFilter);
     }
     
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(r => 
-        r.faculty_name?.toLowerCase().includes(term) ||
+        r.full_name?.toLowerCase().includes(term) ||
         r.department?.toLowerCase().includes(term) ||
         r.leave_category?.toLowerCase().includes(term)
       );
@@ -187,9 +193,9 @@ export default function HODFacultyRequests() {
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-sm">
                     {req.start_date} → {req.end_date}
                   </td>
-                  <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">{req.days}</td>
+                  <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">{req.duration_days || "-"}</td>
                   <td className="px-6 py-4">
-                    <StatusBadge status={req.status} />
+                    <StatusBadge status={req.statusLower || "pending"} />
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
@@ -199,7 +205,7 @@ export default function HODFacultyRequests() {
                       >
                         <Eye size={18} />
                       </Link>
-                      {req.status === "pending" && (
+                      {req.statusLower === "pending" && (
                         <>
                           <button
                             onClick={() => updateStatus(req.id, "approved")}
@@ -257,9 +263,10 @@ function StatusBadge({ status }) {
     rejected: "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400"
   };
   
+  const normalized = String(status || "pending").toLowerCase();
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[status] || styles.pending}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${styles[normalized] || styles.pending}`}>
+      {normalized.charAt(0).toUpperCase() + normalized.slice(1)}
     </span>
   );
 }
