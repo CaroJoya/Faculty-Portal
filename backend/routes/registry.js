@@ -140,7 +140,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
   }
 });
 
-// ========== 2) pending staff requests ==========
+// ========== 2) staff requests (all) ==========
 router.get("/registry/staff-requests", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
@@ -154,8 +154,6 @@ router.get("/registry/staff-requests", authenticateToken, authorizeRoles("regist
       WHERE u.role = 'officestaff'
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
-        AND lr.status = 'Pending'
-        AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
     `).all();
 
@@ -218,7 +216,7 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
   }
 });
 
-// ========== 4) approve + forward (Registry approves final by default) ==========
+// ========== 4) approve + forward ==========
 router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
   try {
     const reg = ensureRegistry(req, res);

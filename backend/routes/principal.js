@@ -85,7 +85,7 @@ router.get("/principal/dashboard-stats", authenticateToken, authorizeRoles("prin
     if (!ensurePrincipal(req, res)) return;
 
     const today = new Date().toISOString().slice(0, 10);
-    const pendingWhere = `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver='HOD' AND date(lr.start_date) > date(?)))`;
+    const pendingWhere = `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`;
 
     const total_pending = db.prepare(`
       SELECT COUNT(*) c
@@ -189,7 +189,7 @@ router.get("/principal/all-pending", authenticateToken, authorizeRoles("principa
     const today = new Date().toISOString().slice(0, 10);
 
     const where = [
-      `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver='HOD' AND date(lr.start_date) > date(?)))`
+      `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`
     ];
     const vals = [today];
 
@@ -461,7 +461,7 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       WHERE id=?
     `).run(admin_comments, id);
 
-    // Notify requester only (faculty)
+    // Notify requester only (faculty/office staff)
     try {
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);

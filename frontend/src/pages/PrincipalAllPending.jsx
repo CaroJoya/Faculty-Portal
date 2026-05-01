@@ -97,8 +97,8 @@ export default function PrincipalAllPending() {
   const approveRequest = async () => {
     if (!selectedRequest) return;
 
-    if (selectedRequest.status === "Approved" && selectedRequest.final_approver === "HOD") {
-      alert("This request is already approved by HOD. Principal can only reject before the start date.");
+    if (selectedRequest.status === "Approved" && ["HOD", "Registry"].includes(selectedRequest.final_approver)) {
+      alert("This request is already approved by HOD/Registry. Principal can only reject before the start date.");
       return;
     }
     
@@ -341,7 +341,7 @@ export default function PrincipalAllPending() {
                   else if (req.hod_approved) approverLabel = req.hod_approved_by ? `HOD/Registry (${req.hod_approved_by})` : "HOD/Registry";
                   
                   const highlighted = Boolean(req.hod_approved || (req.final_approver && (req.final_approver === "HOD" || req.final_approver === "Registry")));
-                  const hodApprovedFinal = req.status === "Approved" && req.final_approver === "HOD";
+                  const hodOrRegistryApproved = req.status === "Approved" && ["HOD", "Registry"].includes(req.final_approver);
 
                   return (
                     <tr key={req.id} className={`hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${highlighted ? "bg-slate-50 dark:bg-gray-900/20" : ""}`}>
@@ -378,25 +378,23 @@ export default function PrincipalAllPending() {
                       <td className="px-6 py-4 text-slate-700 dark:text-slate-300">{approverLabel}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          {/* Existing modal-based actions */}
                           <button
                             onClick={() => {
-                              if (hodApprovedFinal) {
-                                alert("Already approved by HOD. Principal can only reject before start date.");
+                              if (hodOrRegistryApproved) {
+                                alert("Already approved by HOD/Registry. Principal can only reject before start date.");
                                 return;
                               }
                               setSelectedRequest(req);
                               setActionType("approve");
                               setComments("");
                             }}
-                            className={`p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors ${hodApprovedFinal ? "opacity-50 cursor-not-allowed" : ""}`}
-                            title={hodApprovedFinal ? "Already approved by HOD" : "Approve"}
-                            disabled={hodApprovedFinal}
+                            className={`p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors ${hodOrRegistryApproved ? "opacity-50 cursor-not-allowed" : ""}`}
+                            title={hodOrRegistryApproved ? "Already approved by HOD/Registry" : "Approve"}
+                            disabled={hodOrRegistryApproved}
                           >
                             <CheckCircle size={18} />
                           </button>
 
-                          {/* Quick inline reject */}
                           <button
                             onClick={() => inlineReject(req)}
                             className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
@@ -405,7 +403,6 @@ export default function PrincipalAllPending() {
                             <XCircle size={18} />
                           </button>
 
-                          {/* View details (modal) */}
                           <button
                             onClick={() => {
                               setSelectedRequest(req);
@@ -482,7 +479,6 @@ export default function PrincipalAllPending() {
             </div>
             
             <div className="p-5 space-y-4">
-              {/* Request Details */}
               <div className="space-y-2 text-sm">
                 <p><span className="font-medium">Employee:</span> {selectedRequest.full_name}</p>
                 <p><span className="font-medium">Department:</span> {selectedRequest.department}</p>
@@ -494,7 +490,6 @@ export default function PrincipalAllPending() {
                 <p><span className="font-medium">Reason:</span> {selectedRequest.reason || "-"}</p>
               </div>
               
-              {/* Comments for approve/reject */}
               {(actionType === "approve" || actionType === "reject") && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">

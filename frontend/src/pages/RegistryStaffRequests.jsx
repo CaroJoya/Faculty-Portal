@@ -16,7 +16,11 @@ export default function RegistryStaffRequests() {
     setLoading(true);
     try {
       const { data } = await api.get("/registry/staff-requests");
-      setRows(data || []);
+      const normalized = (data || []).map((r) => ({
+        ...r,
+        statusLower: String(r.status || "").toLowerCase()
+      }));
+      setRows(normalized);
     } catch (err) {
       console.error("Failed to load registry staff requests", err);
       setRows([]);
@@ -45,7 +49,7 @@ export default function RegistryStaffRequests() {
     const comments = window.prompt("Optional comments to include for Principal (press Cancel to skip):", "") || "";
     try {
       await api.post(`/registry/approve-forward/${id}`, { comments });
-      alert("Request approved and forwarded to Principal. (HOD/Registry decision is final unless Principal rejects before start date.)");
+      alert("Request approved and forwarded to Principal. (Registry decision is final unless Principal rejects before start date.)");
       load();
     } catch (err) {
       console.error("Approve failed", err);
@@ -113,8 +117,7 @@ export default function RegistryStaffRequests() {
                   <td className="text-slate-700 dark:text-slate-300">{badgeForStatus(r.status)}</td>
                   <td>
                     <div className="flex items-center gap-2">
-                      {/* Approve: only when pending */}
-                      {String(r.status || "").toLowerCase() === "pending" && (
+                      {r.statusLower === "pending" && (
                         <button
                           onClick={() => inlineApprove(r.id, r.full_name)}
                           className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
@@ -124,8 +127,7 @@ export default function RegistryStaffRequests() {
                         </button>
                       )}
 
-                      {/* Quick Reject (works regardless of pending but backend only allows pending) */}
-                      {String(r.status || "").toLowerCase() === "pending" && (
+                      {r.statusLower === "pending" && (
                         <button
                           onClick={() => inlineReject(r.id, r.full_name)}
                           className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
