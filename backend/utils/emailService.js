@@ -1,212 +1,188 @@
-const nodemailer = require("nodemailer");
+const Brevo = require('@getbrevo/brevo');
 
-const MAIL_HOST = process.env.MAIL_HOST;
-const MAIL_PORT = Number(process.env.MAIL_PORT || 587);
-const MAIL_USER = process.env.MAIL_USER;
-const MAIL_PASS = process.env.MAIL_PASS;
-const MAIL_FROM = process.env.MAIL_FROM || `PCE Faculty Leave Portal <${MAIL_USER || "no-reply@localhost"}>`;
+// ========== CONFIGURATION ==========
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'shrusti24comp@student.mes.ac.in';
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'Pillai College of Engineering';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-const mailEnabled = !!(MAIL_HOST && MAIL_PORT && MAIL_USER && MAIL_PASS);
+// ========== INITIALIZE BREVO ==========
+let brevoClient = null;
+let mailEnabled = false;
 
-let transporter = null;
-if (mailEnabled) {
-  transporter = nodemailer.createTransport({
-    host: MAIL_HOST,
-    port: MAIL_PORT,
-    secure: false,
-    auth: {
-      user: MAIL_USER,
-      pass: MAIL_PASS
-    },
-    // Increased timeouts for Render
-    tls: {
-      rejectUnauthorized: false,
-      ciphers: 'SSLv3'
-    },
-    connectionTimeout: 30000,  // Increased from 10000
-    greetingTimeout: 30000,    // Increased from 10000
-    socketTimeout: 30000       // Increased from 15000
-  });
-  
-  // Don't await verification - let it happen in background
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error("[emailService] ❌ SMTP VERIFICATION FAILED:", error.message);
-    } else {
-      console.log("[emailService] ✅ SMTP server is ready to send emails");
-    }
-  });
-} else {
-  console.warn("[emailService] SMTP not configured. Emails will be logged only.");
-}
-
-function shell({ title, subtitle, bodyHtml }) {
-  return `
-  <div style="font-family:Arial,sans-serif;background:#f3f6fb;padding:20px;">
-    <div style="max-width:700px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-      <div style="padding:20px;background:linear-gradient(135deg,#1d4ed8,#4f46e5);color:#fff;">
-        <h2 style="margin:0 0 6px 0;font-size:22px;">${title}</h2>
-        <p style="margin:0;opacity:.9;">${subtitle || ""}</p>
-      </div>
-      <div style="padding:20px;color:#0f172a;font-size:14px;line-height:1.6;">
-        ${bodyHtml}
-      </div>
-      <div style="padding:14px 20px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">
-        PCE Faculty Leave Portal
-      </div>
-    </div>
-  </div>
-  `;
-}
-
-async function sendEmail(to, subject, html) {
+if (BREVO_API_KEY && BREVO_API_KEY !== 'your-brevo-api-key-here') {
   try {
-    if (!to) {
-      console.error("[emailService] No recipient email provided");
-      return false;
-    }
+    brevoClient = new Brevo.TransactionalEmailsApi();
+    brevoClient.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, BREVO_API_KEY);
+    mailEnabled = true;
+    console.log('[emailService] ✅ Brevo API configured successfully');
+    console.log(`[emailService] 📧 Sender: ${BREVO_SENDER_NAME} <${BREVO_SENDER_EMAIL}>`);
+  } catch (err) {
+    console.error('[emailService] ❌ Failed to initialize Brevo:', err.message);
+  }
+} else {
+  console.warn('[emailService] ⚠️ BREVO_API_KEY not configured. Emails will be logged only.');
+  console.warn('[emailService] 💡 Set BREVO_API_KEY in Render environment variables');
+}
 
-    if (!mailEnabled || !transporter) {
-      console.log("[EMAIL-LOG]", { to, subject, preview: String(html).slice(0, 300) });
-      return true;
-    }
-
-    // Add a timeout promise to prevent hanging indefinitely
-    const emailPromise = transporter.sendMail({
-      from: MAIL_FROM,
-      to,
-      subject,
-      html
-    });
-
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Email timeout after 20s')), 20000);
-    });
-
-    await Promise.race([emailPromise, timeoutPromise]);
-    console.log(`[emailService] ✅ Email sent to ${to}`);
+// ========== CORE SEND FUNCTION ==========
+async function sendEmail(to, subject, htmlContent) {
+  if (!mailEnabled || !brevoClient) {
+    console.log('[EMAIL-LOG] 📝 Would send to:', to);
+    console.log('[EMAIL-LOG] 📝 Subject:', subject);
+    console.log('[EMAIL-LOG] 📝 Preview:', String(htmlContent).slice(0, 200));
     return true;
-  } catch (e) {
-    console.error("[emailService] sendEmail error:", e.message);
+  }
+
+  try {
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = htmlContent;
+    sendSmtpEmail.sender = {
+      name: BREVO_SENDER_NAME,
+      email: BREVO_SENDER_EMAIL
+    };
+    sendSmtpEmail.to = [{ email: to }];
+    
+    // Add reply-to (optional)
+    sendSmtpEmail.replyTo = { email: BREVO_SENDER_EMAIL, name: BREVO_SENDER_NAME };
+
+    const response = await brevoClient.sendTransacEmail(sendSmtpEmail);
+    console.log(`[emailService] ✅ Email sent to ${to}`);
+    console.log(`[emailService] 📨 Message ID: ${response?.messageId || 'unknown'}`);
+    return true;
+  } catch (error) {
+    console.error('[emailService] ❌ Send failed:', error?.response?.body?.message || error.message);
+    if (error?.response?.body) {
+      console.error('[emailService] 📋 Details:', JSON.stringify(error.response.body, null, 2));
+    }
     return false;
   }
 }
 
+// ========== EMAIL TEMPLATES ==========
+function shell({ title, subtitle, bodyHtml }) {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+  </head>
+  <body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;">
+    <div style="max-width:600px;margin:0 auto;padding:20px;">
+      <div style="background:linear-gradient(135deg,#1a56db,#4f46e5);padding:30px 20px;border-radius:16px 16px 0 0;color:white;text-align:center;">
+        <img src="https://your-domain.com/logo.png" alt="PCE Logo" style="height:50px;margin-bottom:10px;" onerror="this.style.display='none'">
+        <h1 style="margin:0;font-size:24px;">${title}</h1>
+        <p style="margin:8px 0 0;opacity:0.9;">${subtitle || 'Pillai College of Engineering'}</p>
+      </div>
+      <div style="background:white;padding:30px 25px;border-radius:0 0 16px 16px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+        ${bodyHtml}
+      </div>
+      <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+        <p>Pillai College of Engineering, New Panvel</p>
+        <p>This is an automated message from the Faculty Leave Portal</p>
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+}
+
 function statusBadge(status) {
-  const s = (status || "").toLowerCase();
-  const ok = s === "approved";
-  const bg = ok ? "#dcfce7" : "#fee2e2";
-  const fg = ok ? "#166534" : "#991b1b";
-  return `<span style="display:inline-block;padding:6px 10px;border-radius:999px;background:${bg};color:${fg};font-weight:700;">${status}</span>`;
+  const s = String(status || '').toLowerCase();
+  const colors = {
+    approved: { bg: '#d1fae5', text: '#065f46' },
+    rejected: { bg: '#fee2e2', text: '#991b1b' },
+    pending: { bg: '#fed7aa', text: '#92400e' }
+  };
+  const c = colors[s] || colors.pending;
+  return `<span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${c.bg};color:${c.text};font-weight:600;">${status}</span>`;
 }
 
-function buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink = "#") {
+function buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink) {
   return shell({
-    title: "New Leave Request",
-    subtitle: "A new leave request needs your review",
+    title: "📋 New Leave Request",
+    subtitle: `${requester.full_name} needs your review`,
     bodyHtml: `
-      <p><b>Requester:</b> ${requester.full_name} (${requester.username})</p>
-      <p><b>Email:</b> ${requester.email || "-"}</p>
-      <p><b>Department:</b> ${requester.department || "-"}</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;" />
-      <p><b>Period:</b> ${leaveRequest.start_date} to ${leaveRequest.end_date}</p>
-      <p><b>Leave Type:</b> ${leaveRequest.leave_type || "-"}</p>
-      <p><b>Category:</b> ${leaveRequest.leave_category || "-"}</p>
-      <p><b>Reason:</b> ${leaveRequest.reason || "-"}</p>
-      <a href="${reviewLink}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Review Request</a>
+      <div style="margin-bottom:20px;">
+        <h3 style="margin:0 0 15px;color:#1f2937;">Request Details</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Requester:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${requester.full_name}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Department:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${requester.department || '-'}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Period:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${leaveRequest.start_date} → ${leaveRequest.end_date}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Type:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${leaveRequest.leave_category} (${leaveRequest.leave_type})</td></tr>
+          <tr><td style="padding:8px 0;"><strong>Reason:</strong></td><td style="padding:8px 0;">${leaveRequest.reason || '-'}</td></tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${reviewLink}" style="display:inline-block;background:#1a56db;color:white;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Review Request →</a>
+      </div>
     `
   });
 }
 
-function buildLeaveStatusUpdateTemplate(user, leaveRequest, status, comments = "") {
+function buildLeaveStatusUpdateTemplate(user, leaveRequest, status, comments) {
   return shell({
-    title: "Leave Status Update",
-    subtitle: "Your leave request has been updated",
+    title: status === 'Approved' ? '✅ Leave Request Approved' : '❌ Leave Request Update',
+    subtitle: `Your request has been ${status.toLowerCase()}`,
     bodyHtml: `
-      <p>Hello ${user.full_name || user.username},</p>
-      <p>Status: ${statusBadge(status)}</p>
-      <p><b>Period:</b> ${leaveRequest.start_date} to ${leaveRequest.end_date}</p>
-      <p><b>Leave Type:</b> ${leaveRequest.leave_type || "-"}</p>
-      <p><b>Category:</b> ${leaveRequest.leave_category || "-"}</p>
-      <p><b>Reason:</b> ${leaveRequest.reason || "-"}</p>
-      <p><b>Comments:</b> ${comments || "-"}</p>
-      <a href="${process.env.FRONTEND_URL || "http://localhost:5173/login"}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Open Portal</a>
-    `
-  });
-}
-
-function buildCompensationRequestTemplate(payload, reviewLink = "#") {
-  return shell({
-    title: "Compensation Request Submitted",
-    subtitle: "A compensation request needs review",
-    bodyHtml: `
-      <p><b>User:</b> ${payload.user_name} (${payload.user_username})</p>
-      <p><b>Department:</b> ${payload.department || "-"}</p>
-      <p><b>Extra Work Date:</b> ${payload.work_date || "-"}</p>
-      <p><b>Hours:</b> ${payload.hours || "-"}</p>
-      <p><b>Earned Leaves (calc):</b> ${payload.earned_leaves || "-"}</p>
-      <p><b>Details:</b> ${payload.details || "-"}</p>
-      <a href="${reviewLink}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Review Compensation</a>
-    `
-  });
-}
-
-function buildCompensationDecisionTemplate(payload, action, comments = "") {
-  const approved = action === "approved";
-  return shell({
-    title: approved ? "Compensation Approved" : "Compensation Rejected",
-    subtitle: approved ? "Your compensation request was approved" : "Your compensation request was rejected",
-    bodyHtml: `
-      <p><b>Status:</b> ${approved ? "Approved" : "Rejected"}</p>
-      <p><b>Hours:</b> ${payload.hours || "-"}</p>
-      <p><b>Earned Leaves:</b> ${payload.earned_leaves || "-"}</p>
-      <p><b>Updated Balance:</b> ${payload.updated_earned_leave_left ?? "-"}</p>
-      <p><b>Comments:</b> ${comments || "-"}</p>
+      <div style="margin-bottom:20px;text-align:center;">
+        ${statusBadge(status)}
+      </div>
+      <div style="margin-bottom:20px;">
+        <h3 style="margin:0 0 15px;color:#1f2937;">Request Summary</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Period:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${leaveRequest.start_date} → ${leaveRequest.end_date}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;"><strong>Type:</strong></td><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${leaveRequest.leave_category}</td></tr>
+          ${comments ? `<tr><td style="padding:8px 0;"><strong>Comments:</strong></td><td style="padding:8px 0;">${comments}</td></tr>` : ''}
+        </table>
+      </div>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${FRONTEND_URL}/status" style="display:inline-block;background:#1a56db;color:white;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">View My Status →</a>
+      </div>
     `
   });
 }
 
 function buildPasswordResetTemplate(user, resetLink) {
   return shell({
-    title: "Password Reset Request",
-    subtitle: "This link will expire in 1 hour",
+    title: "🔐 Reset Your Password",
+    subtitle: "No worries, it happens to everyone",
     bodyHtml: `
-      <p>Hello ${user.full_name || user.username},</p>
-      <p>We received a request to reset your password.</p>
-      <a href="${resetLink}" style="display:inline-block;margin-top:10px;background:#1d4ed8;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">Reset Password</a>
-      <p style="margin-top:14px;color:#64748b;">If you did not request this, you can ignore this email.</p>
+      <p style="margin-bottom:20px;">Hello ${user.full_name || user.username},</p>
+      <p style="margin-bottom:20px;">We received a request to reset your password for the PCE Faculty Leave Portal.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:15px;margin:20px 0;text-align:center;">
+        <p style="margin:0 0 10px;font-size:14px;">Click the button below to set a new password. This link expires in 1 hour.</p>
+        <a href="${resetLink}" style="display:inline-block;background:#059669;color:white;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Reset Password →</a>
+      </div>
+      <p style="margin-top:20px;font-size:12px;color:#6b7280;">If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
     `
   });
 }
 
+// ========== PUBLIC EXPORTS ==========
 async function sendNewLeaveRequest(requester, leaveRequest, recipient, reviewLink) {
   const html = buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink);
-  return sendEmail(recipient.email, "New Leave Request - Action Required", html);
+  return sendEmail(recipient.email, `📋 New Leave Request - ${requester.full_name}`, html);
 }
 
 async function sendLeaveStatusUpdate(user, leaveRequest, status, comments) {
   const html = buildLeaveStatusUpdateTemplate(user, leaveRequest, status, comments);
-  return sendEmail(user.email, `Leave Request ${status}`, html);
-}
-
-async function sendCompensationNotification(conversion, action, comments, recipientEmail) {
-  const html =
-    action === "requested"
-      ? buildCompensationRequestTemplate(conversion)
-      : buildCompensationDecisionTemplate(conversion, action, comments);
-  const subject =
-    action === "requested"
-      ? "New Compensation Request"
-      : action === "approved"
-      ? "Compensation Approved"
-      : "Compensation Rejected";
-  return sendEmail(recipientEmail, subject, html);
+  return sendEmail(user.email, `📧 Leave Request ${status}`, html);
 }
 
 async function sendPasswordResetEmail(user, token) {
-  const resetLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${token}`;
+  const resetLink = `${FRONTEND_URL}/reset-password?token=${token}`;
   const html = buildPasswordResetTemplate(user, resetLink);
-  return sendEmail(user.email, "Reset Your Password - PCE Faculty Leave Portal", html);
+  return sendEmail(user.email, "🔐 Reset Your Password - PCE Faculty Leave Portal", html);
+}
+
+// Placeholder for compatibility
+async function sendCompensationNotification(conversion, action, comments, recipientEmail) {
+  console.log('[emailService] Compensation notification not implemented with Brevo');
+  return true;
 }
 
 module.exports = {
@@ -214,5 +190,6 @@ module.exports = {
   sendNewLeaveRequest,
   sendLeaveStatusUpdate,
   sendCompensationNotification,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  mailEnabled
 };
