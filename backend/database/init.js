@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
 require("dotenv").config();
 
-const dbPath = path.resolve(process.env.DB_PATH || path.join(__dirname, "faculty_leave.db"));
+const dbPath = path.resolve(process.env.DB_PATH || path.join(__dirname, "../data/faculty_leave.db"));
 // Ensure db directory exists
 const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
@@ -364,10 +364,30 @@ function seedDefaultUsers() {
     ["hod_extc", "password123", "hod", "Dr. Avinash Vaidya", "Electronics & Telecommunication"],
     ["hod_applied", "password123", "hod", "Dr. Arun Pillai", "Applied Science & Humanities"],
     ["hod_it", "password123", "hod", "Dr. Prashant Nitnaware", "Information Technology"],
+    ["shrushti", "password123", "faculty", "Shrushti", "Computer Engineering"],
     ["neha.ashok", "password123", "faculty", "Prof. Neha Ashok", "Computer Engineering"],
     ["rashmi.gourkar", "password123", "faculty", "Prof. Rashmi Gourkar", "Computer Engineering"],
     ["sangeetha.selvan", "password123", "faculty", "Prof. Sangeetha Selvan", "Computer Engineering"]
   ];
+
+  // Create a mapping of username → real email address
+  const emailMap = {
+    "office_staff": "office.staff@realcollege.com",
+    "head_clerk": "head.clerk@realcollege.com",
+    "registry_office": "registry@realcollege.com",
+    "principal": "smjoshidemo@mes.ac.in",
+    "hod_computer": "sgovilkar@mes.ac.in",
+    "hod_mechanical": "smjoshi@mes.ac.in",
+    "hod_automobile": "ameymarathe@mes.ac.in",
+    "hod_ecs": "mbhagwat@mes.ac.in",
+    "hod_extc": "avinashvaidya@mes.ac.in",
+    "hod_applied": "profarun@mes.ac.in",
+    "hod_it": "pnitnaware@mes.ac.in",
+    "shrushti": "s75362918@gmail.com",
+    "neha.ashok": "neha.ashok@realcollege.com",
+    "rashmi.gourkar": "nehaashok@mes.ac.in",
+    "sangeetha.selvan": "sangeethas@mes.ac.in"
+  };
 
   const existsStmt = db.prepare("SELECT username FROM users WHERE username = ?");
   const insertStmt = db.prepare(`
@@ -386,11 +406,14 @@ function seedDefaultUsers() {
     if (found) continue;
 
     const hash = bcrypt.hashSync(plainPassword, 10);
+    
+    // Get real email from mapping, or fallback to dummy if not found
+    const email = emailMap[username] || `${username}@faculty-portal.local`;
 
     const userData = {
       username,
       password_hash: hash,
-      email: `${username}@faculty-portal.local`,
+      email: email,
       full_name,
       department,
       role,

@@ -17,6 +17,23 @@ if (mailEnabled) {
     auth: {
       user: MAIL_USER,
       pass: MAIL_PASS
+    },
+    // CRITICAL FIX: These TLS settings are required for Gmail
+    tls: {
+      rejectUnauthorized: false,
+      ciphers: 'SSLv3'
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
+  });
+  
+  // Verify connection immediately to catch issues
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("[emailService] ❌ SMTP VERIFICATION FAILED:", error.message);
+    } else {
+      console.log("[emailService] ✅ SMTP server is ready to send emails");
     }
   });
 } else {
@@ -44,11 +61,19 @@ function shell({ title, subtitle, bodyHtml }) {
 
 async function sendEmail(to, subject, html) {
   try {
-    if (!to) return false;
+    if (!to) {
+      console.error("[emailService] No recipient email provided");
+      return false;
+    }
 
     if (!mailEnabled) {
       console.log("[EMAIL-LOG]", { to, subject, preview: String(html).slice(0, 300) });
       return true;
+    }
+
+    if (!transporter) {
+      console.error("[emailService] Transporter not initialized");
+      return false;
     }
 
     await transporter.sendMail({
@@ -57,6 +82,7 @@ async function sendEmail(to, subject, html) {
       subject,
       html
     });
+    console.log(`[emailService] ✅ Email sent to ${to}`);
     return true;
   } catch (e) {
     console.error("[emailService] sendEmail error:", e.message);

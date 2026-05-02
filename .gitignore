@@ -64,6 +64,12 @@ frontend/.vite/
 # ------------------------------
 backend/uploads/
 backend/uploads/**
+backend/data/*.db
+backend/data/*.sqlite
+backend/data/*.sqlite3
+backend/data/*.db-journal
+backend/data/*.db-shm
+backend/data/*.db-wal
 backend/database/*.db
 backend/database/*.sqlite
 backend/database/*.sqlite3
@@ -75,6 +81,7 @@ backend/database/*.db-wal
 # Keep folder structures if needed
 # ------------------------------
 !backend/uploads/.gitkeep
+!backend/data/.gitkeep
 !backend/database/.gitkeep
 
 # ------------------------------

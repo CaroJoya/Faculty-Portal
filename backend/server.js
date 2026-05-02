@@ -1,14 +1,13 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs");
+const fs = require("fs");  // ← Only ONE fs declaration
 require("dotenv").config();
 
 const { initDatabase, db } = require("./database/init");
 
 const authRoutes = require("./routes/auth");
 const leaveRoutes = require("./routes/leave");
-// const extraWorkRoutes = require("./routes/extraWork"); // REMOVED (compensation flow)
 const userRoutes = require("./routes/user");
 const hodRoutes = require("./routes/hod");
 const registryRoutes = require("./routes/registry");
@@ -16,13 +15,18 @@ const headClerkRoutes = require("./routes/headclerk");
 const principalRoutes = require("./routes/principal");
 const uploadRoutes = require("./routes/upload");
 const changePasswordRoutes = require("./routes/changePassword");
-// REMOVED: const passwordResetRoutes = require("./routes/passwordReset");
 const vacationRoutes = require("./routes/vacation");
 const overworkRoutes = require("./routes/overwork");
 const letterRoutes = require("./routes/letter");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Ensure data directory exists for SQLite (Render compatibility)
+const dataDir = path.join(__dirname, "data");
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -53,19 +57,17 @@ app.get("/api/health", (req, res) => {
 app.use("/api", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api", leaveRoutes);
-// app.use("/api", extraWorkRoutes); // REMOVED
 app.use("/api", hodRoutes);
 app.use("/api", registryRoutes);
 app.use("/api", headClerkRoutes);
 app.use("/api", principalRoutes);
 app.use("/api", uploadRoutes);
 app.use("/api", changePasswordRoutes);
-// REMOVED: app.use("/api", passwordResetRoutes);
 app.use("/api", vacationRoutes);
 app.use("/api", overworkRoutes);
 app.use("/api", letterRoutes);
 
-// Optional fallback auto-approve every 6 hours (in addition to manual endpoint)
+// Optional fallback auto-approve every 6 hours
 setInterval(() => {
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -87,7 +89,6 @@ setInterval(() => {
           WHERE id=?
         `).run(row.id);
 
-        // leave deduction (skip vacation)
         if ((row.leave_category || "").toLowerCase() === "medical") {
           db.prepare(`
             UPDATE users
