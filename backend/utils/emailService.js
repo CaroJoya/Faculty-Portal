@@ -18,17 +18,17 @@ if (mailEnabled) {
       user: MAIL_USER,
       pass: MAIL_PASS
     },
-    // CRITICAL FIX: These TLS settings are required for Gmail
+    // Increased timeouts for Render
     tls: {
       rejectUnauthorized: false,
       ciphers: 'SSLv3'
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000
+    connectionTimeout: 30000,  // Increased from 10000
+    greetingTimeout: 30000,    // Increased from 10000
+    socketTimeout: 30000       // Increased from 15000
   });
   
-  // Verify connection immediately to catch issues
+  // Don't await verification - let it happen in background
   transporter.verify((error, success) => {
     if (error) {
       console.error("[emailService] ❌ SMTP VERIFICATION FAILED:", error.message);
@@ -66,22 +66,24 @@ async function sendEmail(to, subject, html) {
       return false;
     }
 
-    if (!mailEnabled) {
+    if (!mailEnabled || !transporter) {
       console.log("[EMAIL-LOG]", { to, subject, preview: String(html).slice(0, 300) });
       return true;
     }
 
-    if (!transporter) {
-      console.error("[emailService] Transporter not initialized");
-      return false;
-    }
-
-    await transporter.sendMail({
+    // Add a timeout promise to prevent hanging indefinitely
+    const emailPromise = transporter.sendMail({
       from: MAIL_FROM,
       to,
       subject,
       html
     });
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Email timeout after 20s')), 20000);
+    });
+
+    await Promise.race([emailPromise, timeoutPromise]);
     console.log(`[emailService] ✅ Email sent to ${to}`);
     return true;
   } catch (e) {
