@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Calendar, Sun, Snowflake, Filter, Download, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_URL || "/api";
 
 const COLOR_MAP = {
   Present: "bg-green-500 text-white",

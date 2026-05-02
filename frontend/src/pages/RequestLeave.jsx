@@ -15,7 +15,7 @@ import {
   X
 } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_URL || "/api";
 
 export default function RequestLeave() {
   const [form, setForm] = useState({
