@@ -74,9 +74,6 @@ function createTables() {
     )
   `).run();
 
-  // ... rest of your existing createTables() code (leave_requests, extra_work_days, etc.)
-  // Keep all your existing table creation code here exactly as before
-  
   // leave_requests
   db.prepare(`
     CREATE TABLE IF NOT EXISTS leave_requests (
@@ -208,6 +205,19 @@ function createTables() {
       calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `).run();
+
+  // password_reset_tokens
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_username TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at DATETIME NOT NULL,
+      used BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_username) REFERENCES users(username)
+    )
+  `).run();
 }
 
 function runSafeMigrations() {
@@ -322,6 +332,22 @@ function runSafeMigrations() {
   if (!hasColumn("users", "restored_by")) {
     db.prepare(`ALTER TABLE users ADD COLUMN restored_by TEXT`).run();
     console.log("Migration: added users.restored_by");
+  }
+
+  // NEW: Add password_reset_tokens table if it doesn't exist
+  if (!tableExists("password_reset_tokens")) {
+    db.prepare(`
+      CREATE TABLE password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_username TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        expires_at DATETIME NOT NULL,
+        used BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_username) REFERENCES users(username)
+      )
+    `).run();
+    console.log("Migration: created password_reset_tokens");
   }
 }
 

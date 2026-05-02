@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { db } = require("../database/init");
 const { authenticateToken } = require("../middleware/auth");
+const { sendPasswordResetEmail } = require("../utils/emailService");
 require("dotenv").config();
 
 const router = express.Router();
@@ -144,7 +145,7 @@ router.post("/forgot-password", async (req, res) => {
 
     const user = db.prepare("SELECT username, email, full_name FROM users WHERE email = ?").get(email);
     
-    // Always return success for security (don't reveal if email exists)
+    // Always return the same response to prevent email enumeration (timing attack)
     if (!user) {
       return res.json({ message: "If your email is registered, you will receive reset instructions." });
     }
@@ -162,13 +163,12 @@ router.post("/forgot-password", async (req, res) => {
       VALUES (?, ?, ?)
     `).run(user.username, token, expiresAt.toISOString());
 
-    // Send email (you'll need to implement this or use existing emailService)
-    const resetLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${token}`;
-    
-    // You can use your existing email service here
-    console.log("Password reset link:", resetLink);
-    // await sendPasswordResetEmail(user, resetLink);
+    // Send email asynchronously - fire and forget, don't await
+    sendPasswordResetEmail(user, token)
+      .then(() => console.log(`Password reset email sent to ${email}`))
+      .catch((err) => console.error(`Failed to send password reset email to ${email}:`, err?.message || err));
 
+    // Return immediately with generic success message
     return res.json({ message: "If your email is registered, you will receive reset instructions." });
   } catch (error) {
     console.error("FORGOT PASSWORD ERROR:", error);

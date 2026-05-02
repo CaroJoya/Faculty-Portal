@@ -175,29 +175,8 @@ async function sendCompensationNotification(conversion, action, comments, recipi
   return sendEmail(recipientEmail, subject, html);
 }
 
-
-// Add this function to emailService.js
-function buildPasswordResetTemplate(user, resetLink) {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-      <h2 style="color: #333; text-align: center;">Password Reset Request</h2>
-      <p style="color: #555;">Hello ${user.full_name || user.username},</p>
-      <p style="color: #555;">Someone requested a password reset for your account. Click the link below to create a new password:</p>
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetLink}" style="background-color: #2b53e6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
-          Reset Password
-        </a>
-      </div>
-      <p style="color: #555;">This link will expire in <strong>1 hour</strong>.</p>
-      <p style="color: #888; font-size: 12px;">If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
-      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
-      <p style="color: #999; font-size: 11px; text-align: center;">PCE Faculty Leave Portal</p>
-    </div>
-  `;
-}
-
-// Update the sendPasswordResetEmail function
-async function sendPasswordResetEmail(user, resetLink) {
+async function sendPasswordResetEmail(user, token) {
+  const resetLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${token}`;
   const html = buildPasswordResetTemplate(user, resetLink);
   return sendEmail(user.email, "Reset Your Password - PCE Faculty Leave Portal", html);
 }
