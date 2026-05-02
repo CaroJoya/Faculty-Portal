@@ -67,6 +67,12 @@ app.use("/api", vacationRoutes);
 app.use("/api", overworkRoutes);
 app.use("/api", letterRoutes);
 
+// Serve frontend in production
+const frontendPath = path.join(__dirname, "..", "frontend", "dist");
+if (fs.existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+  app.get("*", (req, res) => res.sendFile(path.join(frontendPath, "index.html")));
+}
 // Optional fallback auto-approve every 6 hours
 setInterval(() => {
   try {
