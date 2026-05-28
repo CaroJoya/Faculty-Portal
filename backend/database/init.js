@@ -376,7 +376,7 @@ function seedDefaultUsers() {
     "head_clerk": "head.clerk@realcollege.com",
     "registry_office": "registry@realcollege.com",
     "principal": "smjoshidemo@mes.ac.in",
-    "hod_computer": "sgovilkar@mes.ac.in",
+    "hod_computer": "shrushti24comp@student.mes.ac.in",
     "hod_mechanical": "smjoshi@mes.ac.in",
     "hod_automobile": "ameymarathe@mes.ac.in",
     "hod_ecs": "mbhagwat@mes.ac.in",
