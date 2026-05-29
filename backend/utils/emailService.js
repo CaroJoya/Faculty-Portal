@@ -1,51 +1,60 @@
-const Brevo = require('@getbrevo/brevo');
+const nodemailer = require('nodemailer');
 
 // ========== CONFIGURATION ==========
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'shrusti24comp@student.mes.ac.in';
-const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'Pillai College of Engineering';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://faculty-portal-ucaj.onrender.com';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL || 'pcefacultyleaveportal@gmail.com';
+const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || 'PCE Faculty Leave Portal';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-// ========== INITIALIZE BREVO ==========
-let brevoClient = null;
+// ========== INITIALIZE SMTP TRANSPORTER ==========
+let transporter = null;
 let mailEnabled = false;
 
-if (BREVO_API_KEY && BREVO_API_KEY !== 'your-brevo-api-key-here') {
+if (SMTP_USER && SMTP_PASS) {
   try {
-    brevoClient = new Brevo.TransactionalEmailsApi();
-    brevoClient.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, BREVO_API_KEY);
+    transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
     mailEnabled = true;
-    console.log('[emailService] ✅ Brevo API configured successfully');
+    console.log('[emailService] ✅ SMTP Transporter configured successfully');
   } catch (err) {
-    console.error('[emailService] ❌ Failed to initialize Brevo:', err.message);
+    console.error('[emailService] ❌ Failed to initialize SMTP:', err.message);
   }
 } else {
-  console.warn('[emailService] ⚠️ BREVO_API_KEY not configured. Emails will be logged only.');
+  console.warn('[emailService] ⚠️ SMTP_USER or SMTP_PASS not configured. Emails will be logged only.');
 }
 
 // ========== CORE SEND FUNCTION ==========
 async function sendEmail(to, subject, htmlContent) {
-  if (!mailEnabled || !brevoClient) {
+  if (!mailEnabled || !transporter) {
     console.log('[EMAIL-LOG] 📝 Would send to:', to);
     console.log('[EMAIL-LOG] 📝 Subject:', subject);
     return true;
   }
 
   try {
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = htmlContent;
-    sendSmtpEmail.sender = {
-      name: BREVO_SENDER_NAME,
-      email: BREVO_SENDER_EMAIL
-    };
-    sendSmtpEmail.to = [{ email: to }];
-
-    const response = await brevoClient.sendTransacEmail(sendSmtpEmail);
-    console.log(`[emailService] ✅ Email sent to ${to}`);
+    const info = await transporter.sendMail({
+      from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
+      to: to,
+      subject: subject,
+      html: htmlContent
+    });
+    console.log(`[emailService] ✅ Email sent to ${to}: ${info.messageId}`);
     return true;
   } catch (error) {
-    console.error('[emailService] ❌ Send failed:', error?.response?.body?.message || error.message);
+    console.error('[emailService] ❌ Send failed:', error.message);
     return false;
   }
 }
