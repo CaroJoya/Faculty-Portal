@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Navbar from "./components/Navbar";
 
@@ -71,15 +71,45 @@ function getUser() {
   }
 }
 
+// Loading spinner component
+function LoadingSpinner() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800">
+      <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+      <p className="mt-4 text-slate-600 dark:text-slate-400">Loading...</p>
+    </div>
+  );
+}
+
 function RequireAuth({ children }) {
   const token = localStorage.getItem("token");
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    // Allow a brief moment for localStorage to sync
+    const timer = setTimeout(() => setIsChecking(false), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isChecking) return <LoadingSpinner />;
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
 
 function RequireRole({ roles, children }) {
   const user = getUser();
-  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    // Allow a brief moment for user data to sync
+    const timer = setTimeout(() => setIsChecking(false), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isChecking) return <LoadingSpinner />;
+  if (!user || !roles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
   return children;
 }
 
