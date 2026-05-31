@@ -13,6 +13,10 @@ app.use(express.urlencoded({ extended: true }));
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, '../backend/uploads')));
 
+// Initialize database
+const { initDatabase } = require('../backend/database/init');
+initDatabase();
+
 // Import routes
 const leaveRoutes = require('../backend/routes/leave');
 const hodRoutes = require('../backend/routes/hod');
@@ -20,11 +24,7 @@ const principalRoutes = require('../backend/routes/principal');
 const registryRoutes = require('../backend/routes/registry');
 const authRoutes = require('../backend/routes/auth');
 
-// Initialize database
-const { initDatabase } = require('../backend/database/init');
-initDatabase();
-
-// Use routes
+// Use routes FIRST (before catch-all)
 app.use('/api', leaveRoutes);
 app.use('/api', hodRoutes);
 app.use('/api', principalRoutes);
@@ -36,21 +36,21 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running!' });
 });
 
-// After the health check endpoint, add this:
+// Debug endpoint
 app.get('/api/debug/users', (req, res) => {
-    try {
-      const { db } = require('../backend/database/init');
-      const users = db.prepare('SELECT username, role FROM users LIMIT 10').all();
-      res.json({ 
-        total: users.length,
-        users: users 
-      });
-    } catch (err) {
-      res.json({ error: err.message });
-    }
-  });
+  try {
+    const { db } = require('../backend/database/init');
+    const users = db.prepare('SELECT username, role FROM users LIMIT 10').all();
+    res.json({ 
+      total: users.length,
+      users: users 
+    });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
 
-// Serve frontend
+// Serve frontend (AFTER API routes)
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
