@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { getDB, initDatabase } = require('./config');
+const { getDb } = require('./firebase');
 
 function authenticateToken(req) {
   const authHeader = req.headers.authorization;
@@ -34,18 +34,24 @@ module.exports = async (req, res) => {
   }
 
   try {
-    initDatabase();
-    const db = getDB();
+    const db = getDb();
 
+    // Verify JWT token from Authorization header
     const user = authenticateToken(req);
-    
-    const userData = db.prepare('SELECT * FROM users WHERE username = ?').get(user.username);
-    
-    if (!userData) {
+
+    // Query Firestore for user data
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', user.username).limit(1).get();
+
+    if (userSnapshot.empty) {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    const userData = userSnapshot.docs[0].data();
+    
+    // Don't send password hash to client
     delete userData.password_hash;
+
     return res.json(userData);
   } catch (error) {
     if (error.status) {

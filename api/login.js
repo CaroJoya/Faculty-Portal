@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { getDB, initDatabase } = require('./config');
+const { getDb } = require('./firebase');
 
 module.exports = async (req, res) => {
   // Enable CORS
@@ -19,41 +19,49 @@ module.exports = async (req, res) => {
   }
 
   try {
-    initDatabase();
-    const db = getDB();
-    
+    const db = getDb();
     const { username, password } = req.body;
 
+    // Validate input
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password required' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-    
-    if (!user) {
+    // Query Firestore for user by username
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', username).limit(1).get();
+
+    if (userSnapshot.empty) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check for deleted account
+    const userDoc = userSnapshot.docs[0];
+    const user = userDoc.data();
+
+    // Check if account is deleted
     if (user.deleted_at) {
       return res.status(401).json({ message: 'Account has been deleted. Please restore your account first.' });
     }
 
+    // Check password hash exists
     if (!user.password_hash) {
       console.error('LOGIN ERROR: password_hash missing for user:', username);
       return res.status(500).json({ message: 'Internal Server Error' });
     }
 
+    // Verify password
     const isMatch = bcrypt.compareSync(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // Check JWT_SECRET is set
     if (!process.env.JWT_SECRET) {
       console.error('LOGIN ERROR: JWT_SECRET missing');
       return res.status(500).json({ message: 'Server misconfiguration' });
     }
 
+    // Create JWT token
     const payload = {
       username: user.username,
       role: user.role,
