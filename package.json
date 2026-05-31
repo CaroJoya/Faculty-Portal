@@ -8,7 +8,7 @@
     "dev": "cd backend && npm install && npm start"
   },
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   },
   "dependencies": {
     "express": "^4.19.2",
