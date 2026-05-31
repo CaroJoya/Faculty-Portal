@@ -36,6 +36,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running!' });
 });
 
+// After the health check endpoint, add this:
+app.get('/api/debug/users', (req, res) => {
+    try {
+      const { db } = require('../backend/database/init');
+      const users = db.prepare('SELECT username, role FROM users LIMIT 10').all();
+      res.json({ 
+        total: users.length,
+        users: users 
+      });
+    } catch (err) {
+      res.json({ error: err.message });
+    }
+  });
+
 // Serve frontend
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 app.get('*', (req, res) => {
