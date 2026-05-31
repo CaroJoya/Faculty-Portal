@@ -234,7 +234,7 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
 });
 
 // ========== 4) approve + forward ==========
-router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
+router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("registry"), async (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
     if (!reg) return;
@@ -284,9 +284,8 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, updatedRow, "Approved", comments || "").catch((e) => {
-          console.error("Failed to send approval email to requester:", e?.message || e);
-        });
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Approved", comments || "");
+        console.log(`Registry approval email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Registry post-approve notification error:", e);
@@ -299,9 +298,8 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
         const requester = db.prepare("SELECT username, full_name, email, department FROM users WHERE username = ?").get(row.user_username);
         const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/principal/all-pending`;
         const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
-        sendNewLeaveRequest(requester, updatedRow, principal, reviewLink).catch((e) => {
-          console.error("Failed to notify Principal of Registry approval:", e?.message || e);
-        });
+        const emailSent = await sendNewLeaveRequest(requester, updatedRow, principal, reviewLink);
+        console.log(`Principal notification email to ${principal.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Error notifying principal after Registry approval:", e);
@@ -315,7 +313,7 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
 });
 
 // ========== 5) reject ==========
-router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("registry"), (req, res) => {
+router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("registry"), async (req, res) => {
   try {
     const reg = ensureRegistry(req, res);
     if (!reg) return;
@@ -359,9 +357,8 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason).catch((e) => {
-          console.error("Failed to send rejection email to requester:", e?.message || e);
-        });
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason);
+        console.log(`Registry rejection email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Registry rejection notification error:", e);

@@ -299,7 +299,7 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
 });
 
 // ========== 4) POST /api/hod/forward-to-principal/:id (HOD approve) ==========
-router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
+router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("hod"), async (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
     if (!hodDepartment) return;
@@ -352,24 +352,22 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, updatedRow, "Approved", hod_comments || "").catch((e) => {
-          console.error("Failed to send approval email to requester:", e?.message || e);
-        });
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Approved", hod_comments || "");
+        console.log(`HOD approval email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("HOD post-approve notification error:", e);
     }
 
-    // Notify principal (so principal can optionally reject before start date)
+    // Notify principal
     try {
       const principal = db.prepare("SELECT username, full_name, email FROM users WHERE is_principal = 1 LIMIT 1").get();
       if (principal && principal.email) {
         const requester = db.prepare("SELECT username, full_name, email, department FROM users WHERE username = ?").get(row.user_username);
         const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/principal/all-pending`;
         const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
-        sendNewLeaveRequest(requester, updatedRow, principal, reviewLink).catch((e) => {
-          console.error("Failed to notify Principal of HOD approval:", e?.message || e);
-        });
+        const emailSent = await sendNewLeaveRequest(requester, updatedRow, principal, reviewLink);
+        console.log(`Principal notification email to ${principal.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Error notifying principal after HOD approval:", e);
@@ -383,7 +381,7 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
 });
 
 // ========== 5) POST /api/hod/reject-request/:id ==========
-router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"), (req, res) => {
+router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"), async (req, res) => {
   try {
     const hodDepartment = ensureHod(req, res);
     if (!hodDepartment) return;
@@ -430,9 +428,8 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason).catch((e) => {
-          console.error("Failed to send rejection email to requester:", e?.message || e);
-        });
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Rejected", rejection_reason);
+        console.log(`HOD rejection email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("HOD rejection notification error:", e);

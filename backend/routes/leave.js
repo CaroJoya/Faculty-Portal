@@ -170,16 +170,18 @@ router.post(
         duration_days
       };
 
-      // SEND RESPONSE IMMEDIATELY - Email happens in background
+      // SEND RESPONSE IMMEDIATELY - Email happens in background with proper error logging
       res.status(201).json(responseMessage);
 
       // --- BACKGROUND EMAIL NOTIFICATION (does NOT block response) ---
-      setTimeout(async () => {
+      (async () => {
         try {
           const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(leaveRequestId);
           const requester = db.prepare("SELECT username, full_name, email, department, role FROM users WHERE username = ?").get(req.user.username);
 
           if (requester && leaveRow) {
+            console.log(`[Leave Request] Sending notifications for request ${leaveRequestId} from ${requester.username} (${requester.role})`);
+            
             if (requester.role === "faculty") {
               // find HOD for this department
               let hod = db.prepare("SELECT username, full_name, email, managed_department FROM users WHERE is_hod = 1 AND managed_department = ? LIMIT 1").get(requester.department);
@@ -189,25 +191,37 @@ router.post(
               }
               if (hod && hod.email) {
                 const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/hod-admin/faculty-requests/${leaveRequestId}`;
-                await sendNewLeaveRequest(requester, leaveRow, hod, reviewLink).catch((e) => {
-                  console.error("Background email to HOD failed:", e?.message || e);
-                });
+                const emailSent = await sendNewLeaveRequest(requester, leaveRow, hod, reviewLink);
+                console.log(`[Leave Request] Email to HOD (${hod.email}): ${emailSent ? 'SUCCESS' : 'FAILED'}`);
+              } else {
+                console.log(`[Leave Request] No HOD found for department: ${requester.department}`);
               }
             } else if (requester.role === "officestaff") {
               // notify registry
               const registry = db.prepare("SELECT username, full_name, email FROM users WHERE is_registry = 1 LIMIT 1").get();
               if (registry && registry.email) {
                 const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/registry-admin/staff-requests/${leaveRequestId}`;
-                await sendNewLeaveRequest(requester, leaveRow, registry, reviewLink).catch((e) => {
-                  console.error("Background email to Registry failed:", e?.message || e);
-                });
+                const emailSent = await sendNewLeaveRequest(requester, leaveRow, registry, reviewLink);
+                console.log(`[Leave Request] Email to Registry (${registry.email}): ${emailSent ? 'SUCCESS' : 'FAILED'}`);
+              } else {
+                console.log(`[Leave Request] No Registry found`);
               }
+            } else if (requester.role === "hod") {
+              // HOD requests go directly to principal
+              const principal = db.prepare("SELECT username, full_name, email FROM users WHERE is_principal = 1 LIMIT 1").get();
+              if (principal && principal.email) {
+                const reviewLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/principal/all-pending`;
+                const emailSent = await sendNewLeaveRequest(requester, leaveRow, principal, reviewLink);
+                console.log(`[Leave Request] Email to Principal (${principal.email}): ${emailSent ? 'SUCCESS' : 'FAILED'}`);
+              }
+            } else {
+              console.log(`[Leave Request] Role ${requester.role} does not require email notification`);
             }
           }
         } catch (e) {
-          console.error("Background email notification error (non-fatal):", e);
+          console.error("[Leave Request] Background email notification error:", e);
         }
-      }, 0); // Execute after response is sent
+      })(); // Immediately invoked async function
 
     } catch (e) {
       console.error("leave-requests POST error:", e);

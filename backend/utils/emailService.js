@@ -13,7 +13,16 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 let transporter = null;
 let mailEnabled = false;
 
-if (SMTP_USER && SMTP_PASS) {
+// Debug log for email configuration
+console.log('[emailService] 📧 Email Configuration:');
+console.log(`[emailService]   SMTP_HOST: ${SMTP_HOST}`);
+console.log(`[emailService]   SMTP_PORT: ${SMTP_PORT}`);
+console.log(`[emailService]   SMTP_USER: ${SMTP_USER ? '✅ Set' : '❌ Missing'}`);
+console.log(`[emailService]   SMTP_PASS: ${SMTP_PASS ? '✅ Set' : '❌ Missing'}`);
+console.log(`[emailService]   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}`);
+console.log(`[emailService]   FRONTEND_URL: ${FRONTEND_URL}`);
+
+if (SMTP_USER && SMTP_PASS && SMTP_USER !== 'your_email@gmail.com' && SMTP_PASS !== 'your_app_password') {
   try {
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
@@ -27,21 +36,38 @@ if (SMTP_USER && SMTP_PASS) {
         rejectUnauthorized: false
       }
     });
-    mailEnabled = true;
-    console.log('[emailService] ✅ SMTP Transporter configured successfully');
+    
+    // Verify connection
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('[emailService] ❌ SMTP Verification Failed:', error.message);
+        mailEnabled = false;
+      } else {
+        console.log('[emailService] ✅ SMTP Transporter configured and verified successfully');
+        mailEnabled = true;
+      }
+    });
   } catch (err) {
     console.error('[emailService] ❌ Failed to initialize SMTP:', err.message);
+    mailEnabled = false;
   }
 } else {
-  console.warn('[emailService] ⚠️ SMTP_USER or SMTP_PASS not configured. Emails will be logged only.');
+  console.warn('[emailService] ⚠️ SMTP_USER or SMTP_PASS not configured or using placeholder values. Emails will be logged only.');
+  console.warn('[emailService] ⚠️ Please set valid SMTP_USER and SMTP_PASS in .env file');
 }
 
 // ========== CORE SEND FUNCTION ==========
 async function sendEmail(to, subject, htmlContent) {
   if (!mailEnabled || !transporter) {
-    console.log('[EMAIL-LOG] 📝 Would send to:', to);
+    console.log('[EMAIL-LOG] 📝 Email would be sent to:', to);
     console.log('[EMAIL-LOG] 📝 Subject:', subject);
-    return true;
+    console.log('[EMAIL-LOG] ⚠️ Email not actually sent - SMTP not configured');
+    return false;
+  }
+
+  if (!to || !to.includes('@')) {
+    console.error('[emailService] ❌ Invalid recipient email:', to);
+    return false;
   }
 
   try {
@@ -54,7 +80,7 @@ async function sendEmail(to, subject, htmlContent) {
     console.log(`[emailService] ✅ Email sent to ${to}: ${info.messageId}`);
     return true;
   } catch (error) {
-    console.error('[emailService] ❌ Send failed:', error.message);
+    console.error(`[emailService] ❌ Send failed to ${to}:`, error.message);
     return false;
   }
 }
@@ -101,9 +127,10 @@ function buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink) {
     bodyHtml: `
       <p><strong>Requester:</strong> ${requester.full_name}</p>
       <p><strong>Department:</strong> ${requester.department || '-'}</p>
+      <p><strong>Role:</strong> ${requester.role || '-'}</p>
       <p><strong>Period:</strong> ${leaveRequest.start_date} → ${leaveRequest.end_date}</p>
       <p><strong>Type:</strong> ${leaveRequest.leave_category} (${leaveRequest.leave_type})</p>
-      <p><strong>Reason:</strong> ${leaveRequest.reason || '-'}</p>
+      <p><strong>Reason:</strong> ${(leaveRequest.reason || '-').substring(0, 200)}</p>
       <div style="text-align:center;margin-top:25px;">
         <a href="${reviewLink}" style="display:inline-block;background:#1a56db;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
       </div>
@@ -133,30 +160,48 @@ function buildPasswordResetTemplate(user, resetLink) {
     subtitle: "No worries, it happens to everyone",
     bodyHtml: `
       <p>Hello ${user.full_name || user.username},</p>
-      <p>We received a request to reset your password.</p>
+      <p>We received a request to reset your password for the PCE Faculty Leave Portal.</p>
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:15px;margin:20px 0;text-align:center;">
         <a href="${resetLink}" style="display:inline-block;background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Reset Password →</a>
       </div>
-      <p style="font-size:12px;">If you didn't request this, please ignore this email.</p>
+      <p style="font-size:12px;">This link will expire in 1 hour. If you didn't request this, please ignore this email.</p>
     `
   });
 }
 
 // ========== PUBLIC EXPORTS ==========
 async function sendNewLeaveRequest(requester, leaveRequest, recipient, reviewLink) {
+  if (!recipient || !recipient.email) {
+    console.error('[emailService] ❌ Cannot send new leave request: recipient has no email', recipient);
+    return false;
+  }
   const html = buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink);
-  return sendEmail(recipient.email, `📋 New Leave Request - ${requester.full_name}`, html);
+  const result = await sendEmail(recipient.email, `📋 New Leave Request - ${requester.full_name}`, html);
+  console.log(`[emailService] sendNewLeaveRequest to ${recipient.email}: ${result ? 'SUCCESS' : 'FAILED'}`);
+  return result;
 }
 
 async function sendLeaveStatusUpdate(user, leaveRequest, status, comments) {
+  if (!user || !user.email) {
+    console.error('[emailService] ❌ Cannot send leave status update: user has no email', user);
+    return false;
+  }
   const html = buildLeaveStatusUpdateTemplate(user, leaveRequest, status, comments);
-  return sendEmail(user.email, `📧 Leave Request ${status}`, html);
+  const result = await sendEmail(user.email, `📧 Leave Request ${status}`, html);
+  console.log(`[emailService] sendLeaveStatusUpdate to ${user.email} (${status}): ${result ? 'SUCCESS' : 'FAILED'}`);
+  return result;
 }
 
 async function sendPasswordResetEmail(user, token) {
+  if (!user || !user.email) {
+    console.error('[emailService] ❌ Cannot send password reset: user has no email', user);
+    return false;
+  }
   const resetLink = `${FRONTEND_URL}/reset-password?token=${token}`;
   const html = buildPasswordResetTemplate(user, resetLink);
-  return sendEmail(user.email, "🔐 Reset Your Password", html);
+  const result = await sendEmail(user.email, "🔐 Reset Your Password", html);
+  console.log(`[emailService] sendPasswordResetEmail to ${user.email}: ${result ? 'SUCCESS' : 'FAILED'}`);
+  return result;
 }
 
 async function sendCompensationNotification(conversion, action, comments, recipientEmail) {

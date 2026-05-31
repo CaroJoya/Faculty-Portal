@@ -256,7 +256,7 @@ router.get("/principal/hod-pending", authenticateToken, authorizeRoles("principa
 });
 
 // 6) approve hod
-router.post("/principal/approve-hod/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
+router.post("/principal/approve-hod/:requestId", authenticateToken, authorizeRoles("principal"), async (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
 
@@ -287,6 +287,18 @@ router.post("/principal/approve-hod/:requestId", authenticateToken, authorizeRol
     });
     tx();
 
+    // Notify requester (HOD)
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Approved", admin_comments || "");
+        console.log(`Principal approve-hod email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
+      }
+    } catch (e) {
+      console.error("Principal approve-hod notification error:", e);
+    }
+
     res.json({ message: "HOD leave approved" });
   } catch (e) {
     console.error("PRINCIPAL approve-hod error:", e);
@@ -295,7 +307,7 @@ router.post("/principal/approve-hod/:requestId", authenticateToken, authorizeRol
 });
 
 // 7) reject hod
-router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
+router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRoles("principal"), async (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
 
@@ -323,6 +335,18 @@ router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRole
       WHERE id=?
     `).run(admin_comments, id);
 
+    // Notify requester (HOD)
+    try {
+      const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
+      const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
+      if (requester && requester.email) {
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Rejected", admin_comments);
+        console.log(`Principal reject-hod email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
+      }
+    } catch (e) {
+      console.error("Principal reject-hod notification error:", e);
+    }
+
     res.json({ message: "HOD leave rejected" });
   } catch (e) {
     console.error("PRINCIPAL reject-hod error:", e);
@@ -331,7 +355,7 @@ router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRole
 });
 
 // 8) final approve (faculty/office/reg/hod)
-router.post("/principal/final-approve/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
+router.post("/principal/final-approve/:requestId", authenticateToken, authorizeRoles("principal"), async (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
 
@@ -361,13 +385,15 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
         const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
         const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
         if (requester && requester.email) {
-          sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "").catch((e) => console.error(e));
+          const emailSent = await sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "");
+          console.log(`Principal final approval email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
         }
         // notify HOD/Registry who approved previously
         if (row.hod_approved_by) {
           const approver = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.hod_approved_by);
           if (approver && approver.email) {
-            sendLeaveStatusUpdate(approver, leaveRow, "Approved", `Principal confirmed approval. ${admin_comments || ""}`).catch((e) => console.error(e));
+            const emailSent = await sendLeaveStatusUpdate(approver, leaveRow, "Approved", `Principal confirmed approval. ${admin_comments || ""}`);
+            console.log(`Principal final approval email to approver ${approver.email}: ${emailSent ? 'sent' : 'failed'}`);
           }
         }
       } catch (e) {
@@ -399,7 +425,8 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const leaveRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "").catch((e) => console.error(e));
+        const emailSent = await sendLeaveStatusUpdate(requester, leaveRow, "Approved", admin_comments || "");
+        console.log(`Principal final-approve email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Principal final-approve notification error:", e);
@@ -413,7 +440,7 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
 });
 
 // 9) final reject — allow rejecting Pending OR Approved requests before start_date, restore balances if previously deducted
-router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRoles("principal"), (req, res) => {
+router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRoles("principal"), async (req, res) => {
   try {
     if (!ensurePrincipal(req, res)) return;
 
@@ -466,7 +493,8 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       const requester = db.prepare("SELECT username, full_name, email FROM users WHERE username = ?").get(row.user_username);
       const updatedRow = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id);
       if (requester && requester.email) {
-        sendLeaveStatusUpdate(requester, updatedRow, "Rejected", admin_comments).catch((e) => console.error(e));
+        const emailSent = await sendLeaveStatusUpdate(requester, updatedRow, "Rejected", admin_comments);
+        console.log(`Principal final-reject email to ${requester.email}: ${emailSent ? 'sent' : 'failed'}`);
       }
     } catch (e) {
       console.error("Principal final-reject notification to requester failed:", e);
