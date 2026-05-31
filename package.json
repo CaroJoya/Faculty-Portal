@@ -1,12 +1,24 @@
 {
-    "name": "faculty-leave-portal",
-    "version": "1.0.0",
-    "scripts": {
-      "build": "cd frontend && npm install && npm run build",
-      "start": "cd backend && npm start",
-      "install-all": "cd backend && npm install && cd ../frontend && npm install"
-    },
-    "engines": {
-      "node": ">=18.0.0 <21.0.0"
-    }
+  "name": "faculty-leave-portal",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "node api/index.js",
+    "dev": "cd backend && npm install && npm start"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.9.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.16",
+    "axios": "^1.7.2"
   }
+}
