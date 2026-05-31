@@ -1,8 +1,8 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "buildCommand": "cd frontend && npm install --save-dev vite && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
-  "installCommand": "echo 'skipping root install'",
+  "installCommand": "echo 'skipping'",
   "rewrites": [
     {
       "source": "/api/(.*)",
