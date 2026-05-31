@@ -72,6 +72,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get().c;
 
@@ -83,6 +84,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
         AND lr.status = 'Approved'
+        AND lr.cancelled_at IS NULL
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get().c;
 
@@ -94,6 +96,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
         AND lr.status = 'Rejected'
+        AND lr.cancelled_at IS NULL
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get().c;
 
@@ -105,6 +108,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
       LIMIT 10
@@ -121,6 +125,7 @@ router.get("/registry/dashboard-stats", authenticateToken, authorizeRoles("regis
         AND u.department = 'Office'
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get();
 
@@ -148,7 +153,15 @@ router.get("/registry/staff-requests", authenticateToken, authorizeRoles("regist
 
     const rows = db.prepare(`
       SELECT lr.*, u.full_name, u.email, u.phone_number, u.department, u.designation,
-             u.medical_leave_left, u.casual_leave_left, u.earned_leave_left
+             u.medical_leave_left, u.casual_leave_left, u.earned_leave_left,
+             CASE 
+               WHEN lr.cancelled_at IS NOT NULL THEN 'Cancelled'
+               ELSE lr.status
+             END AS display_status,
+             CASE
+               WHEN lr.cancelled_at IS NOT NULL THEN 'Deleted by requester'
+               ELSE NULL
+             END AS cancellation_info
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'officestaff'
@@ -174,7 +187,11 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
 
     const request = db.prepare(`
       SELECT lr.*, u.username, u.full_name, u.email, u.phone_number, u.department, u.designation,
-             u.medical_leave_left, u.casual_leave_left, u.earned_leave_left
+             u.medical_leave_left, u.casual_leave_left, u.earned_leave_left,
+             CASE 
+               WHEN lr.cancelled_at IS NOT NULL THEN 'Cancelled'
+               ELSE lr.status
+             END AS display_status
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ? AND u.role = 'officestaff' AND u.deleted_at IS NULL
@@ -186,16 +203,16 @@ router.get("/registry/request/:id", authenticateToken, authorizeRoles("registry"
     const recent_history = db.prepare(`
       SELECT id, start_date, end_date, leave_category, leave_type, approved_at
       FROM leave_requests
-      WHERE user_username = ? AND status = 'Approved'
+      WHERE user_username = ? AND status = 'Approved' AND cancelled_at IS NULL
       ORDER BY approved_at DESC, created_at DESC
       LIMIT 5
     `).all(request.user_username);
 
     const leave_statistics = db.prepare(`
       SELECT
-        SUM(CASE WHEN leave_category = 'medical' AND status = 'Approved' THEN 1 ELSE 0 END) AS medical_taken,
-        SUM(CASE WHEN leave_category = 'casual' AND status = 'Approved' THEN 1 ELSE 0 END) AS casual_taken,
-        SUM(CASE WHEN leave_category = 'earned' AND status = 'Approved' THEN 1 ELSE 0 END) AS earned_taken
+        SUM(CASE WHEN leave_category = 'medical' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS medical_taken,
+        SUM(CASE WHEN leave_category = 'casual' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS casual_taken,
+        SUM(CASE WHEN leave_category = 'earned' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS earned_taken
       FROM leave_requests
       WHERE user_username = ?
         AND strftime('%Y', start_date) = strftime('%Y', 'now')
@@ -237,6 +254,9 @@ router.post("/registry/approve-forward/:id", authenticateToken, authorizeRoles("
       return res.status(403).json({ message: "Forbidden: Not an Office Staff request" });
     }
     if (row.status !== "Pending") return res.status(400).json({ message: "Only pending requests can be forwarded" });
+    if (row.cancelled_at !== null) {
+      return res.status(400).json({ message: "Cannot approve a cancelled leave request" });
+    }
 
     const days = parseDays(row);
 
@@ -307,7 +327,7 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
     }
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department, u.role, lr.user_username
+      SELECT lr.id, lr.status, u.department, u.role, lr.user_username, lr.cancelled_at
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ?
@@ -318,6 +338,9 @@ router.post("/registry/reject-request/:id", authenticateToken, authorizeRoles("r
       return res.status(403).json({ message: "Forbidden: Not an Office Staff request" });
     }
     if (row.status !== "Pending") return res.status(400).json({ message: "Only pending requests can be rejected" });
+    if (row.cancelled_at !== null) {
+      return res.status(400).json({ message: "Cannot reject a cancelled leave request" });
+    }
 
     db.prepare(`
       UPDATE leave_requests
@@ -361,8 +384,8 @@ router.get("/registry/staff-list", authenticateToken, authorizeRoles("registry")
       SELECT
         u.username, u.full_name, u.email, u.phone_number, u.department, u.designation, u.date_of_joining,
         u.medical_leave_left, u.casual_leave_left, u.earned_leave_left,
-        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Approved') AS approved_count,
-        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Pending') AS pending_count
+        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Approved' AND lr.cancelled_at IS NULL) AS approved_count,
+        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Pending' AND lr.cancelled_at IS NULL) AS pending_count
       FROM users u
       WHERE u.role = 'officestaff' AND u.department = 'Office' AND u.deleted_at IS NULL
       ORDER BY u.full_name ASC
@@ -605,7 +628,8 @@ router.get("/registry/deleted-staff-history", authenticateToken, authorizeRoles(
           lr.leave_category,
           lr.leave_type,
           lr.created_at,
-          lr.approved_at
+          lr.approved_at,
+          lr.cancelled_at
         FROM leave_requests lr
         WHERE lr.user_username = ?
         ORDER BY lr.created_at DESC

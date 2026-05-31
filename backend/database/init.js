@@ -231,6 +231,20 @@ function runSafeMigrations() {
     console.log("Migration: added leave_requests.letter_path");
   }
 
+  // NEW: Add soft delete columns to leave_requests
+  if (!hasColumn("leave_requests", "cancelled_at")) {
+    db.prepare(`ALTER TABLE leave_requests ADD COLUMN cancelled_at DATETIME`).run();
+    console.log("Migration: added leave_requests.cancelled_at");
+  }
+  if (!hasColumn("leave_requests", "cancelled_by")) {
+    db.prepare(`ALTER TABLE leave_requests ADD COLUMN cancelled_by TEXT`).run();
+    console.log("Migration: added leave_requests.cancelled_by");
+  }
+  if (!hasColumn("leave_requests", "cancel_reason")) {
+    db.prepare(`ALTER TABLE leave_requests ADD COLUMN cancel_reason TEXT`).run();
+    console.log("Migration: added leave_requests.cancel_reason");
+  }
+
   // ensure attendance has marked_by
   if (!hasColumn("attendance", "marked_by")) {
     db.prepare(`ALTER TABLE attendance ADD COLUMN marked_by TEXT`).run();
@@ -312,7 +326,7 @@ function runSafeMigrations() {
     console.log("Migration: created faculty_vacation_calculation");
   }
 
-  // NEW: Add soft delete columns if they don't exist
+  // Add soft delete columns if they don't exist
   if (!hasColumn("users", "deleted_at")) {
     db.prepare(`ALTER TABLE users ADD COLUMN deleted_at DATETIME`).run();
     console.log("Migration: added users.deleted_at");
@@ -334,7 +348,7 @@ function runSafeMigrations() {
     console.log("Migration: added users.restored_by");
   }
 
-  // NEW: Add password_reset_tokens table if it doesn't exist
+  // Add password_reset_tokens table if it doesn't exist
   if (!tableExists("password_reset_tokens")) {
     db.prepare(`
       CREATE TABLE password_reset_tokens (

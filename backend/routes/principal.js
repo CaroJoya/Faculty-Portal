@@ -85,7 +85,7 @@ router.get("/principal/dashboard-stats", authenticateToken, authorizeRoles("prin
     if (!ensurePrincipal(req, res)) return;
 
     const today = new Date().toISOString().slice(0, 10);
-    const pendingWhere = `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`;
+    const pendingWhere = `(lr.status='Pending' AND lr.cancelled_at IS NULL OR (lr.status='Approved' AND lr.cancelled_at IS NULL AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`;
 
     const total_pending = db.prepare(`
       SELECT COUNT(*) c
@@ -145,7 +145,7 @@ router.get("/principal/department-chart-data", authenticateToken, authorizeRoles
       SELECT u.department, COUNT(*) count
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.status='Pending'
+      WHERE lr.status='Pending' AND lr.cancelled_at IS NULL
       GROUP BY u.department
       ORDER BY count DESC
     `).all();
@@ -165,7 +165,7 @@ router.get("/principal/leave-type-chart-data", authenticateToken, authorizeRoles
     const rows = db.prepare(`
       SELECT COALESCE(leave_category, 'other') AS leave_category, COUNT(*) count
       FROM leave_requests
-      WHERE status='Pending'
+      WHERE status='Pending' AND cancelled_at IS NULL
       GROUP BY COALESCE(leave_category, 'other')
       ORDER BY count DESC
     `).all();
@@ -189,7 +189,7 @@ router.get("/principal/all-pending", authenticateToken, authorizeRoles("principa
     const today = new Date().toISOString().slice(0, 10);
 
     const where = [
-      `(lr.status='Pending' OR (lr.status='Approved' AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`
+      `(lr.status='Pending' AND lr.cancelled_at IS NULL OR (lr.status='Approved' AND lr.cancelled_at IS NULL AND lr.final_approver IN ('HOD','Registry') AND date(lr.start_date) > date(?)))`
     ];
     const vals = [today];
 
@@ -244,7 +244,7 @@ router.get("/principal/hod-pending", authenticateToken, authorizeRoles("principa
       SELECT lr.*, u.full_name, u.email, u.department, u.role
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.status='Pending' AND u.role='hod'
+      WHERE lr.status='Pending' AND u.role='hod' AND lr.cancelled_at IS NULL
       ORDER BY lr.created_at DESC
     `).all();
 
@@ -267,7 +267,7 @@ router.post("/principal/approve-hod/:requestId", authenticateToken, authorizeRol
       SELECT lr.*, u.role, u.username, u.full_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id = ? AND lr.status='Pending'
+      WHERE lr.id = ? AND lr.status='Pending' AND lr.cancelled_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Pending request not found" });
@@ -309,7 +309,7 @@ router.post("/principal/reject-hod/:requestId", authenticateToken, authorizeRole
       SELECT lr.*, u.role
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id=? AND lr.status='Pending'
+      WHERE lr.id=? AND lr.status='Pending' AND lr.cancelled_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Pending request not found" });
@@ -342,7 +342,7 @@ router.post("/principal/final-approve/:requestId", authenticateToken, authorizeR
       SELECT lr.*, u.role, u.username, u.full_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id=? 
+      WHERE lr.id=? AND lr.cancelled_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Request not found" });
@@ -427,7 +427,7 @@ router.post("/principal/final-reject/:requestId", authenticateToken, authorizeRo
       SELECT lr.*, u.role, u.username as requester_username, u.full_name, u.department
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
-      WHERE lr.id=?
+      WHERE lr.id=? AND lr.cancelled_at IS NULL
     `).get(id);
 
     if (!row) return res.status(404).json({ message: "Request not found" });
@@ -491,6 +491,7 @@ router.post("/principal/auto-approve-pending", authenticateToken, authorizeRoles
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND date(lr.start_date) <= date(?)
     `).all(today);
 

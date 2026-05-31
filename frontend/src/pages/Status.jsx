@@ -9,7 +9,8 @@ import {
   Download,
   Calendar,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -18,6 +19,7 @@ export default function Status() {
   const token = localStorage.getItem("token");
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(null);
   const [counts, setCounts] = useState({ total: 0, approved: 0, rejected: 0, pending: 0 });
 
   const load = async () => {
@@ -58,11 +60,34 @@ export default function Status() {
     }
   };
 
+  const cancelLeaveRequest = async (id) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this leave request? This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setDeleting(id);
+    try {
+      await axios.delete(`${API}/leave-requests/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Leave request cancelled successfully");
+      load(); // Reload the requests
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message;
+      alert(`Failed to cancel leave request: ${errMsg}`);
+      console.error("Failed to cancel leave request", err);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const config = {
       Approved: { icon: CheckCircle, bg: "bg-emerald-100 dark:bg-emerald-900/30", text: "text-emerald-700 dark:text-emerald-400", label: "Approved" },
       Rejected: { icon: XCircle, bg: "bg-rose-100 dark:bg-rose-900/30", text: "text-rose-700 dark:text-rose-400", label: "Rejected" },
-      Pending: { icon: Clock, bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Pending" }
+      Pending: { icon: Clock, bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Pending" },
+      Cancelled: { icon: XCircle, bg: "bg-gray-100 dark:bg-gray-900/30", text: "text-gray-700 dark:text-gray-400", label: "Cancelled" }
     };
     const c = config[status] || config.Pending;
     const Icon = c.icon;
@@ -138,6 +163,7 @@ export default function Status() {
                 <th className="text-left p-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Duration</th>
                 <th className="text-left p-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Status</th>
                 <th className="text-left p-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Letter</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-gray-700">
@@ -167,15 +193,31 @@ export default function Status() {
                         {r.duration_days || "-"} day(s)
                       </span>
                     </td>
-                    <td className="p-4">{getStatusBadge(r.status)}</td>
                     <td className="p-4">
-                      {r.status === "Approved" ? (
+                      {getStatusBadge(r.cancelled_at ? "Cancelled" : r.status)}
+                    </td>
+                    <td className="p-4">
+                      {r.status === "Approved" && !r.cancelled_at ? (
                         <button
                           onClick={() => openLetter(r.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-colors text-sm"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-900/70 transition-colors"
                         >
                           <Eye size={14} />
                           View
+                        </button>
+                      ) : (
+                        <span className="text-sm text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {r.status === "Pending" && !r.cancelled_at ? (
+                        <button
+                          onClick={() => cancelLeaveRequest(r.id)}
+                          disabled={deleting === r.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 size={14} />
+                          {deleting === r.id ? "Cancelling..." : "Cancel"}
                         </button>
                       ) : (
                         <span className="text-sm text-slate-400">-</span>
@@ -185,7 +227,7 @@ export default function Status() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="p-8 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center gap-2">
                       <FileText size={48} className="text-slate-300 dark:text-slate-600" />
                       <p>No leave requests found</p>
@@ -209,8 +251,8 @@ export default function Status() {
         <div className="flex items-start gap-3">
           <AlertCircle size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-700 dark:text-blue-300">
-            <p className="font-medium">Approval Workflow</p>
-            <p className="mt-0.5">Your request will be reviewed by your HOD and forwarded to Principal for final approval. Approved requests will have a downloadable approval letter.</p>
+            <p className="font-medium">Approval Workflow & Cancellation</p>
+            <p className="mt-0.5">Your request will be reviewed by your HOD and forwarded to Principal for final approval. You can cancel pending requests before approval. Once approved or rejected, cancellation is not allowed. Approved requests will have a downloadable approval letter.</p>
           </div>
         </div>
       </div>

@@ -106,6 +106,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         AND u.department = ?
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get(hodDepartment).count;
 
@@ -117,6 +118,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         AND u.department = ?
         AND u.deleted_at IS NULL
         AND lr.status = 'Approved'
+        AND lr.cancelled_at IS NULL
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get(hodDepartment).count;
 
@@ -128,6 +130,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         AND u.department = ?
         AND u.deleted_at IS NULL
         AND lr.status = 'Rejected'
+        AND lr.cancelled_at IS NULL
         AND strftime('%Y', lr.start_date) = strftime('%Y', 'now')
     `).get(hodDepartment).count;
 
@@ -142,6 +145,8 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         lr.reason,
         lr.status,
         lr.created_at,
+        lr.cancelled_at,
+        lr.cancelled_by,
         u.username,
         u.full_name,
         u.department
@@ -151,6 +156,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         AND u.department = ?
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
       ORDER BY lr.created_at DESC
       LIMIT 10
@@ -167,6 +173,7 @@ router.get("/hod/dashboard-stats", authenticateToken, authorizeRoles("hod"), (re
         AND u.department = ?
         AND u.deleted_at IS NULL
         AND lr.status = 'Pending'
+        AND lr.cancelled_at IS NULL
         AND (lr.hod_approved IS NULL OR lr.hod_approved = 0)
     `).get(hodDepartment);
 
@@ -199,7 +206,15 @@ router.get("/hod/faculty-requests", authenticateToken, authorizeRoles("hod"), (r
         u.email,
         u.phone_number,
         u.department,
-        u.designation
+        u.designation,
+        CASE 
+          WHEN lr.cancelled_at IS NOT NULL THEN 'Cancelled'
+          ELSE lr.status
+        END AS display_status,
+        CASE
+          WHEN lr.cancelled_at IS NOT NULL THEN 'Deleted by requester'
+          ELSE NULL
+        END AS cancellation_info
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE u.role = 'faculty'
@@ -233,7 +248,11 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
         u.designation,
         u.medical_leave_left,
         u.casual_leave_left,
-        u.earned_leave_left
+        u.earned_leave_left,
+        CASE 
+          WHEN lr.cancelled_at IS NOT NULL THEN 'Cancelled'
+          ELSE lr.status
+        END AS display_status
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ?
@@ -249,16 +268,16 @@ router.get("/hod/request/:id", authenticateToken, authorizeRoles("hod"), (req, r
     const recent_history = db.prepare(`
       SELECT id, start_date, end_date, leave_category, leave_type, reason, approved_at
       FROM leave_requests
-      WHERE user_username = ? AND status = 'Approved'
+      WHERE user_username = ? AND status = 'Approved' AND cancelled_at IS NULL
       ORDER BY approved_at DESC, created_at DESC
       LIMIT 5
     `).all(requestRow.user_username);
 
     const leave_statistics = db.prepare(`
       SELECT
-        SUM(CASE WHEN leave_category = 'medical' AND status = 'Approved' THEN 1 ELSE 0 END) AS medical_taken,
-        SUM(CASE WHEN leave_category = 'casual' AND status = 'Approved' THEN 1 ELSE 0 END) AS casual_taken,
-        SUM(CASE WHEN leave_category = 'earned' AND status = 'Approved' THEN 1 ELSE 0 END) AS earned_taken
+        SUM(CASE WHEN leave_category = 'medical' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS medical_taken,
+        SUM(CASE WHEN leave_category = 'casual' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS casual_taken,
+        SUM(CASE WHEN leave_category = 'earned' AND status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS earned_taken
       FROM leave_requests
       WHERE user_username = ?
         AND strftime('%Y', start_date) = strftime('%Y', 'now')
@@ -301,6 +320,9 @@ router.post("/hod/forward-to-principal/:id", authenticateToken, authorizeRoles("
     }
     if (row.status !== "Pending") {
       return res.status(400).json({ message: "Only pending requests can be approved" });
+    }
+    if (row.cancelled_at !== null) {
+      return res.status(400).json({ message: "Cannot approve a cancelled leave request" });
     }
 
     const days = parseDays(row);
@@ -374,7 +396,7 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
     }
 
     const row = db.prepare(`
-      SELECT lr.id, lr.status, u.department, lr.user_username
+      SELECT lr.id, lr.status, u.department, lr.user_username, lr.cancelled_at
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.id = ? AND u.role = 'faculty' AND u.deleted_at IS NULL
@@ -386,6 +408,9 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
     }
     if (row.status !== "Pending") {
       return res.status(400).json({ message: "Only pending requests can be rejected" });
+    }
+    if (row.cancelled_at !== null) {
+      return res.status(400).json({ message: "Cannot reject a cancelled leave request" });
     }
 
     db.prepare(`
@@ -420,7 +445,6 @@ router.post("/hod/reject-request/:id", authenticateToken, authorizeRoles("hod"),
   }
 });
 
-// Rest of HOD endpoints (faculty-list, add-faculty, reset-password, delete/restore etc.) remain unchanged below...
 // ========== 6) GET /api/hod/faculty-list ==========
 router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, res) => {
   try {
@@ -439,8 +463,8 @@ router.get("/hod/faculty-list", authenticateToken, authorizeRoles("hod"), (req, 
         u.medical_leave_left,
         u.casual_leave_left,
         u.earned_leave_left,
-        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Approved') AS approved_count,
-        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Pending') AS pending_count
+        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Approved' AND lr.cancelled_at IS NULL) AS approved_count,
+        (SELECT COUNT(*) FROM leave_requests lr WHERE lr.user_username = u.username AND lr.status = 'Pending' AND lr.cancelled_at IS NULL) AS pending_count
       FROM users u
       WHERE u.role = 'faculty'
         AND u.department = ?
@@ -711,7 +735,8 @@ router.get("/hod/deleted-faculty-history", authenticateToken, authorizeRoles("ho
           lr.created_at,
           lr.approved_at,
           lr.hod_approved_by,
-          lr.final_approver
+          lr.final_approver,
+          lr.cancelled_at
         FROM leave_requests lr
         WHERE lr.user_username = ?
         ORDER BY lr.created_at DESC

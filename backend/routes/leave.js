@@ -49,9 +49,9 @@ router.get(
     try {
       const row = db.prepare(`
         SELECT
-          SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved,
-          SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END) AS rejected
+          SUM(CASE WHEN status = 'Pending' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status = 'Approved' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS approved,
+          SUM(CASE WHEN status = 'Rejected' AND cancelled_at IS NULL THEN 1 ELSE 0 END) AS rejected
         FROM leave_requests
         WHERE user_username = ?
       `).get(req.user.username);
@@ -211,6 +211,64 @@ router.post(
 
     } catch (e) {
       console.error("leave-requests POST error:", e);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  }
+);
+
+// DELETE /api/leave-requests/:id - Cancel a pending leave request
+router.delete(
+  "/leave-requests/:id",
+  authenticateToken,
+  authorizeRoles("faculty", "hod", "officestaff", "registry"),
+  (req, res) => {
+    try {
+      const leaveId = parseInt(req.params.id, 10);
+      if (!leaveId || leaveId <= 0) {
+        return res.status(400).json({ message: "Invalid leave request ID" });
+      }
+
+      // Fetch the leave request
+      const leaveRequest = db.prepare(`
+        SELECT * FROM leave_requests WHERE id = ?
+      `).get(leaveId);
+
+      if (!leaveRequest) {
+        return res.status(404).json({ message: "Leave request not found" });
+      }
+
+      // Check if user is the owner of the leave request
+      if (leaveRequest.user_username !== req.user.username) {
+        return res.status(403).json({ message: "You can only cancel your own leave requests" });
+      }
+
+      // Check if already cancelled
+      if (leaveRequest.cancelled_at !== null) {
+        return res.status(400).json({ message: "This leave request has already been cancelled" });
+      }
+
+      // Check if status is Pending (only allow deletion of pending requests)
+      if (leaveRequest.status !== "Pending") {
+        return res.status(400).json({ 
+          message: `Cannot cancel ${leaveRequest.status} leave request. Only pending requests can be cancelled.` 
+        });
+      }
+
+      // Mark as cancelled (soft delete)
+      db.prepare(`
+        UPDATE leave_requests
+        SET cancelled_at = CURRENT_TIMESTAMP,
+            cancelled_by = ?
+        WHERE id = ?
+      `).run(req.user.username, leaveId);
+
+      res.json({ 
+        message: "Leave request cancelled successfully",
+        leaveRequestId: leaveId
+      });
+
+    } catch (e) {
+      console.error("leave-requests DELETE error:", e);
       return res.status(500).json({ message: "Internal Server Error" });
     }
   }
