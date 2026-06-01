@@ -121,6 +121,7 @@ function statusBadge(status) {
 }
 
 function buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink) {
+  // REMOVED: The reviewLink parameter and button are no longer used
   return shell({
     title: "📋 New Leave Request",
     subtitle: `${requester.full_name} needs your review`,
@@ -131,9 +132,7 @@ function buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink) {
       <p><strong>Period:</strong> ${leaveRequest.start_date} → ${leaveRequest.end_date}</p>
       <p><strong>Type:</strong> ${leaveRequest.leave_category} (${leaveRequest.leave_type})</p>
       <p><strong>Reason:</strong> ${(leaveRequest.reason || '-').substring(0, 200)}</p>
-      <div style="text-align:center;margin-top:25px;">
-        <a href="${reviewLink}" style="display:inline-block;background:#1a56db;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
-      </div>
+      <p style="margin-top:20px;color:#6b7280;font-size:13px;">Please log in to the portal to review and take action on this request.</p>
     `
   });
 }
@@ -175,6 +174,7 @@ async function sendNewLeaveRequest(requester, leaveRequest, recipient, reviewLin
     console.error('[emailService] ❌ Cannot send new leave request: recipient has no email', recipient);
     return false;
   }
+  // reviewLink parameter is kept for compatibility but not used in email
   const html = buildNewLeaveRequestTemplate(requester, leaveRequest, reviewLink);
   const result = await sendEmail(recipient.email, `📋 New Leave Request - ${requester.full_name}`, html);
   console.log(`[emailService] sendNewLeaveRequest to ${recipient.email}: ${result ? 'SUCCESS' : 'FAILED'}`);
