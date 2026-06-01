@@ -1,4 +1,3 @@
-// frontend/src/pages/HeadClerkDashboard.jsx
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
@@ -32,6 +31,7 @@ export default function HeadClerkDashboard() {
     pending_vacation_calculations: 0
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [today, setToday] = useState(new Date());
 
   useEffect(() => {
@@ -42,25 +42,35 @@ export default function HeadClerkDashboard() {
 
   const loadDashboardData = async () => {
     setLoading(true);
+    setError(null);
     try {
+      // Get user info
       const userRes = await axios.get(`${API}/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(userRes.data);
 
-      // Get today's attendance stats
+      // Get today's date info
       const year = today.getFullYear();
       const month = today.getMonth() + 1;
       const todayStr = today.toISOString().slice(0, 10);
       
-      const calendarRes = await axios.get(`${API}/headclerk/attendance/calendar`, {
+      // Get faculty list and attendance
+      const facultyRes = await axios.get(`${API}/headclerk/faculty/by-department`, {
+        params: { department: "" },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const faculty = facultyRes.data || [];
+      
+      // Get attendance for today
+      const attendanceRes = await axios.get(`${API}/headclerk/attendance/calendar`, {
         params: { month, year },
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      const faculty = calendarRes.data.faculty || [];
-      const attendance = calendarRes.data.attendance || [];
-      const leaveRecords = calendarRes.data.leaveRecords || [];
+      const attendance = attendanceRes.data?.attendance || [];
+      const leaveRecords = attendanceRes.data?.leaveRecords || [];
 
       const todayAttendance = attendance.filter(a => a.date === todayStr);
       const presentToday = todayAttendance.filter(a => a.status === "Present").length;
@@ -82,6 +92,7 @@ export default function HeadClerkDashboard() {
       });
     } catch (err) {
       console.error("Failed to load dashboard data", err);
+      setError(err?.response?.data?.message || "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -98,6 +109,21 @@ export default function HeadClerkDashboard() {
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-600 border-t-transparent"></div>
           <p className="mt-4 text-slate-500 dark:text-slate-400">Loading dashboard...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+        <p className="text-slate-600 dark:text-slate-400">{error}</p>
+        <button 
+          onClick={loadDashboardData} 
+          className="mt-4 bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-xl transition-all"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -182,7 +208,7 @@ export default function HeadClerkDashboard() {
       </div>
 
       {/* Quick Actions Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         <QuickActionCard
           to="/headclerk/attendance/calendar"
           title="Attendance Calendar"
@@ -191,16 +217,9 @@ export default function HeadClerkDashboard() {
           color="blue"
         />
         <QuickActionCard
-          to="/headclerk/attendance/upload"
-          title="Upload Attendance"
-          description="Bulk upload attendance from Excel/CSV"
-          icon={Upload}
-          color="green"
-        />
-        <QuickActionCard
-          to="/headclerk/vacation/manage"
-          title="Vacation Management"
-          description="Manage 7-day vacation periods"
+          to="/headclerk/vacation/calendar"
+          title="Vacation Calendar"
+          description="View faculty vacation schedules"
           icon={Sun}
           color="orange"
         />
@@ -261,81 +280,53 @@ export default function HeadClerkDashboard() {
           </div>
         </div>
 
-        {/* Quick Stats & Info */}
-        <div className="space-y-6">
-          {/* System Info */}
-          <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-5 text-white">
-            <h3 className="font-semibold mb-3">📋 Quick Tips</h3>
-            <ul className="space-y-2 text-sm text-blue-100">
-              <li className="flex items-center gap-2">
-                <CheckCircle size={14} />
-                Mark attendance daily before 10 AM
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle size={14} />
-                Set vacation periods before they start
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle size={14} />
-                Run vacation calculations after each period ends
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle size={14} />
-                Upload monthly attendance for record keeping
-              </li>
-            </ul>
-          </div>
-
-          {/* Pending Actions */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-5">
-            <h3 className="font-semibold text-slate-800 dark:text-white mb-3">📌 Pending Actions</h3>
-            <div className="space-y-3">
-              <Link 
-                to="/headclerk/attendance/calendar"
-                className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-all"
-              >
-                <div className="flex items-center gap-2">
-                  <Clock size={16} className="text-amber-600" />
-                  <span className="text-sm text-amber-700 dark:text-amber-400">Mark today's attendance</span>
-                </div>
-                <span className="text-xs text-amber-600">Pending</span>
-              </Link>
-              <Link 
-                to="/headclerk/vacation/summer-winter"
-                className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all"
-              >
-                <div className="flex items-center gap-2">
-                  <Sun size={16} className="text-blue-600" />
-                  <span className="text-sm text-blue-700 dark:text-blue-400">Configure Summer/Winter vacations</span>
-                </div>
-                <span className="text-xs text-blue-600">Setup</span>
-              </Link>
-            </div>
-          </div>
+        {/* Quick Tips */}
+        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <TrendingUp size={18} />
+            Quick Tips
+          </h3>
+          <ul className="space-y-2 text-sm text-blue-100">
+            <li className="flex items-center gap-2">
+              <CheckCircle size={14} />
+              Mark attendance daily before 10 AM
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle size={14} />
+              Set vacation periods before they start
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle size={14} />
+              Run vacation calculations after each period ends
+            </li>
+          </ul>
         </div>
       </div>
 
-      {/* Recent Updates / News */}
+      {/* Pending Actions */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 size={18} className="text-brand-600" />
-          <h3 className="font-semibold text-slate-800 dark:text-white">System Updates</h3>
-        </div>
+        <h3 className="font-semibold text-slate-800 dark:text-white mb-3">📌 Pending Actions</h3>
         <div className="space-y-3">
-          <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-gray-900/50 rounded-xl">
-            <div className="w-2 h-2 mt-2 rounded-full bg-emerald-500" />
-            <div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">Vacation calculation now auto-converts remaining days to earned leaves</p>
-              <p className="text-xs text-slate-400 mt-1">Updated: December 2024</p>
+          <Link 
+            to="/headclerk/attendance/calendar"
+            className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-amber-600" />
+              <span className="text-sm text-amber-700 dark:text-amber-400">Mark today's attendance</span>
             </div>
-          </div>
-          <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-gray-900/50 rounded-xl">
-            <div className="w-2 h-2 mt-2 rounded-full bg-blue-500" />
-            <div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">Bulk attendance upload now supports Excel and CSV formats</p>
-              <p className="text-xs text-slate-400 mt-1">Updated: November 2024</p>
+            <span className="text-xs text-amber-600">Pending</span>
+          </Link>
+          <Link 
+            to="/headclerk/vacation/summer-winter"
+            className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <Sun size={16} className="text-blue-600" />
+              <span className="text-sm text-blue-700 dark:text-blue-400">Configure Summer/Winter vacations</span>
             </div>
-          </div>
+            <span className="text-xs text-blue-600">Setup</span>
+          </Link>
         </div>
       </div>
     </div>
@@ -365,7 +356,6 @@ function StatCard({ title, value, icon: Icon, color }) {
 function QuickActionCard({ to, title, description, icon: Icon, color }) {
   const colors = {
     blue: "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/50",
-    green: "bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50",
     orange: "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/50",
     cyan: "bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-900/50"
   };

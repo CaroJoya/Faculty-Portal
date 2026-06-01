@@ -55,10 +55,12 @@ export default function PrincipalAllPending() {
       const uniqueDepts = [...new Set(data.map(r => r.department).filter(Boolean))];
       setDepartments(uniqueDepts);
       
-      // Calculate stats
+      // Calculate stats (excluding cancelled from pending count)
       const roleStats = {};
       data.forEach(r => {
-        roleStats[r.role] = (roleStats[r.role] || 0) + 1;
+        if (!r.cancelled_at) {
+          roleStats[r.role] = (roleStats[r.role] || 0) + 1;
+        }
       });
       setStats(roleStats);
     } catch (err) {
@@ -90,12 +92,25 @@ export default function PrincipalAllPending() {
       );
     }
     
+    // Sort: cancelled requests at the bottom
+    filtered.sort((a, b) => {
+      if (a.cancelled_at && !b.cancelled_at) return 1;
+      if (!a.cancelled_at && b.cancelled_at) return -1;
+      return 0;
+    });
+    
     setFilteredRequests(filtered);
     setCurrentPage(1);
   };
 
   const approveRequest = async () => {
     if (!selectedRequest) return;
+    
+    // Check if request is cancelled
+    if (selectedRequest.cancelled_at) {
+      alert("Cannot approve a cancelled request");
+      return;
+    }
 
     if (selectedRequest.status === "Approved" && ["HOD", "Registry"].includes(selectedRequest.final_approver)) {
       alert("This request is already approved by HOD/Registry. Principal can only reject before the start date.");
@@ -136,6 +151,12 @@ export default function PrincipalAllPending() {
   const rejectRequest = async () => {
     if (!selectedRequest) return;
     
+    // Check if request is cancelled
+    if (selectedRequest.cancelled_at) {
+      alert("Cannot reject a cancelled request");
+      return;
+    }
+    
     if (!comments.trim()) {
       alert("Rejection reason is required");
       return;
@@ -174,12 +195,17 @@ export default function PrincipalAllPending() {
 
   // Inline reject (quick action directly from the row)
   const inlineReject = async (req) => {
+    // Check if request is cancelled
+    if (req.cancelled_at) {
+      alert("Cannot reject a cancelled request");
+      return;
+    }
+    
     try {
       const today = new Date().toISOString().slice(0, 10);
       if (!req.start_date) {
         return alert("Cannot reject: request has no start date");
       }
-      // Optional client-side check — backend enforces final rule
       if (new Date(req.start_date) <= new Date(today)) {
         return alert("Cannot reject: start date has already passed or is today");
       }
@@ -188,7 +214,6 @@ export default function PrincipalAllPending() {
       if (!reason || !reason.trim()) return alert("Rejection reason is required");
       
       setProcessing(true);
-      // call final-reject for all roles (principal handles mapping)
       await axios.post(`${API}/principal/final-reject/${req.id}`, 
         { admin_comments: reason },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -205,7 +230,7 @@ export default function PrincipalAllPending() {
   };
 
   const exportToCSV = () => {
-    const headers = ["Employee", "Department", "Role", "Leave Type", "Start Date", "End Date", "Days", "Reason"];
+    const headers = ["Employee", "Department", "Role", "Leave Type", "Start Date", "End Date", "Days", "Status", "Reason"];
     const rows = filteredRequests.map(r => [
       r.full_name,
       r.department || "-",
@@ -214,6 +239,7 @@ export default function PrincipalAllPending() {
       r.start_date,
       r.end_date,
       r.duration_days || "-",
+      r.cancelled_at ? "Cancelled" : r.status,
       r.reason?.replace(/,/g, " ") || "-"
     ]);
     
@@ -240,6 +266,9 @@ export default function PrincipalAllPending() {
       </div>
     );
   }
+
+  // Helper to check if request is cancelled
+  const isCancelled = (req) => !!req.cancelled_at;
 
   return (
     <div className="space-y-6">
@@ -328,26 +357,23 @@ export default function PrincipalAllPending() {
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Leave Period</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Type</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Days</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Approved By</th>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Status</th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-gray-700">
               {currentItems.length > 0 ? (
                 currentItems.map((req) => {
-                  // determine approver label
-                  let approverLabel = "-";
-                  if (req.final_approver) approverLabel = req.final_approver;
-                  else if (req.hod_approved) approverLabel = req.hod_approved_by ? `HOD/Registry (${req.hod_approved_by})` : "HOD/Registry";
+                  const cancelled = isCancelled(req);
+                  const hodOrRegistryApproved = !cancelled && req.status === "Approved" && ["HOD", "Registry"].includes(req.final_approver);
                   
-                  const highlighted = Boolean(req.hod_approved || (req.final_approver && (req.final_approver === "HOD" || req.final_approver === "Registry")));
-                  const hodOrRegistryApproved = req.status === "Approved" && ["HOD", "Registry"].includes(req.final_approver);
-
                   return (
-                    <tr key={req.id} className={`hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${highlighted ? "bg-slate-50 dark:bg-gray-900/20" : ""}`}>
+                    <tr key={req.id} className={`hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${cancelled ? "opacity-70 bg-gray-50 dark:bg-gray-900/20" : ""}`}>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="font-medium text-slate-800 dark:text-white">{req.full_name}</p>
+                          <p className={`font-medium ${cancelled ? "text-slate-500 dark:text-slate-400 line-through" : "text-slate-800 dark:text-white"}`}>
+                            {req.full_name}
+                          </p>
                           <p className="text-xs text-slate-400">{req.email}</p>
                         </div>
                       </td>
@@ -375,33 +401,52 @@ export default function PrincipalAllPending() {
                       <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
                         {req.duration_days || "-"}
                       </td>
-                      <td className="px-6 py-4 text-slate-700 dark:text-slate-300">{approverLabel}</td>
+                      <td className="px-6 py-4">
+                        {cancelled ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                            <XCircle size={12} />
+                            Cancelled by Requester
+                          </span>
+                        ) : (
+                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                            req.status === "Approved" ? "bg-emerald-100 text-emerald-700" :
+                            req.status === "Rejected" ? "bg-rose-100 text-rose-700" :
+                            "bg-amber-100 text-amber-700"
+                          }`}>
+                            {req.status}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              if (hodOrRegistryApproved) {
-                                alert("Already approved by HOD/Registry. Principal can only reject before start date.");
-                                return;
-                              }
-                              setSelectedRequest(req);
-                              setActionType("approve");
-                              setComments("");
-                            }}
-                            className={`p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors ${hodOrRegistryApproved ? "opacity-50 cursor-not-allowed" : ""}`}
-                            title={hodOrRegistryApproved ? "Already approved by HOD/Registry" : "Approve"}
-                            disabled={hodOrRegistryApproved}
-                          >
-                            <CheckCircle size={18} />
-                          </button>
+                          {!cancelled && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  if (hodOrRegistryApproved) {
+                                    alert("Already approved by HOD/Registry. Principal can only reject before start date.");
+                                    return;
+                                  }
+                                  setSelectedRequest(req);
+                                  setActionType("approve");
+                                  setComments("");
+                                }}
+                                className={`p-2 rounded-lg transition-colors ${hodOrRegistryApproved ? "opacity-50 cursor-not-allowed" : "text-emerald-600 hover:bg-emerald-50"}`}
+                                title={hodOrRegistryApproved ? "Already approved by HOD/Registry" : "Approve"}
+                                disabled={hodOrRegistryApproved}
+                              >
+                                <CheckCircle size={18} />
+                              </button>
 
-                          <button
-                            onClick={() => inlineReject(req)}
-                            className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Quick Reject"
-                          >
-                            <XCircle size={18} />
-                          </button>
+                              <button
+                                onClick={() => inlineReject(req)}
+                                className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="Quick Reject"
+                              >
+                                <XCircle size={18} />
+                              </button>
+                            </>
+                          )}
 
                           <button
                             onClick={() => {
@@ -483,14 +528,17 @@ export default function PrincipalAllPending() {
                 <p><span className="font-medium">Employee:</span> {selectedRequest.full_name}</p>
                 <p><span className="font-medium">Department:</span> {selectedRequest.department}</p>
                 <p><span className="font-medium">Role:</span> {selectedRequest.role}</p>
-                <p><span className="font-medium">Status:</span> {selectedRequest.status}</p>
+                <p><span className="font-medium">Status:</span> {selectedRequest.cancelled_at ? "Cancelled" : (selectedRequest.status || "Pending")}</p>
+                {selectedRequest.cancelled_at && (
+                  <p><span className="font-medium text-rose-600">Cancelled At:</span> {new Date(selectedRequest.cancelled_at).toLocaleString()}</p>
+                )}
                 <p><span className="font-medium">Final Approver:</span> {selectedRequest.final_approver || "-"}</p>
                 <p><span className="font-medium">Period:</span> {selectedRequest.start_date} → {selectedRequest.end_date}</p>
                 <p><span className="font-medium">Leave Type:</span> {selectedRequest.leave_category} ({selectedRequest.leave_type})</p>
                 <p><span className="font-medium">Reason:</span> {selectedRequest.reason || "-"}</p>
               </div>
               
-              {(actionType === "approve" || actionType === "reject") && (
+              {(actionType === "approve" || actionType === "reject") && !selectedRequest.cancelled_at && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                     {actionType === "approve" ? "Comments (Optional)" : "Rejection Reason *"}
@@ -502,6 +550,12 @@ export default function PrincipalAllPending() {
                     value={comments}
                     onChange={(e) => setComments(e.target.value)}
                   />
+                </div>
+              )}
+              
+              {selectedRequest.cancelled_at && actionType !== "view" && (
+                <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl text-center text-gray-600 dark:text-gray-400">
+                  This request has been cancelled by the requester and cannot be approved or rejected.
                 </div>
               )}
             </div>
@@ -517,7 +571,7 @@ export default function PrincipalAllPending() {
               >
                 Cancel
               </button>
-              {actionType === "approve" && (
+              {actionType === "approve" && !selectedRequest.cancelled_at && (
                 <button
                   onClick={approveRequest}
                   disabled={processing}
@@ -526,7 +580,7 @@ export default function PrincipalAllPending() {
                   {processing ? "Processing..." : "Approve"}
                 </button>
               )}
-              {actionType === "reject" && (
+              {actionType === "reject" && !selectedRequest.cancelled_at && (
                 <button
                   onClick={rejectRequest}
                   disabled={processing}

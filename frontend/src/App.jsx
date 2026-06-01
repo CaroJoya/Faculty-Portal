@@ -483,15 +483,7 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
-        <Route path="/headclerk/attendance-calendar" element={
-          <AppLayout>
-            <RequireAuth>
-              <RequireRole roles={["headclerk"]}>
-                <HeadClerkAttendanceCalendar />
-              </RequireRole>
-            </RequireAuth>
-          </AppLayout>
-        } />
+        {/* FIXED: Added missing /headclerk/attendance/calendar route */}
         <Route path="/headclerk/attendance/calendar" element={
           <AppLayout>
             <RequireAuth>
@@ -501,6 +493,27 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
+        {/* FIXED: Added missing /headclerk/attendance/upload route */}
+        <Route path="/headclerk/attendance/upload" element={
+          <AppLayout>
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkMarkAttendance />
+              </RequireRole>
+            </RequireAuth>
+          </AppLayout>
+        } />
+        {/* Legacy route for backward compatibility */}
+        <Route path="/headclerk/attendance-calendar" element={
+          <AppLayout>
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkAttendanceCalendar />
+              </RequireRole>
+            </RequireAuth>
+          </AppLayout>
+        } />
+        {/* Legacy route for backward compatibility */}
         <Route path="/headclerk/mark-attendance" element={
           <AppLayout>
             <RequireAuth>
@@ -510,7 +523,8 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
-        <Route path="/headclerk/vacation-calendar" element={
+        {/* FIXED: Added missing /headclerk/vacation/manage route */}
+        <Route path="/headclerk/vacation/manage" element={
           <AppLayout>
             <RequireAuth>
               <RequireRole roles={["headclerk"]}>
@@ -519,6 +533,7 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
+        {/* FIXED: Added missing /headclerk/vacation/calendar route */}
         <Route path="/headclerk/vacation/calendar" element={
           <AppLayout>
             <RequireAuth>
@@ -528,7 +543,18 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
-        <Route path="/headclerk/summer-winter-management" element={
+        {/* Legacy route for backward compatibility */}
+        <Route path="/headclerk/vacation-calendar" element={
+          <AppLayout>
+            <RequireAuth>
+              <RequireRole roles={["headclerk"]}>
+                <HeadClerkVacationCalendar />
+              </RequireRole>
+            </RequireAuth>
+          </AppLayout>
+        } />
+        {/* FIXED: Added missing /headclerk/vacation/summer-winter route */}
+        <Route path="/headclerk/vacation/summer-winter" element={
           <AppLayout>
             <RequireAuth>
               <RequireRole roles={["headclerk"]}>
@@ -537,7 +563,8 @@ export default function App() {
             </RequireAuth>
           </AppLayout>
         } />
-        <Route path="/headclerk/vacation/summer-winter" element={
+        {/* Legacy route for backward compatibility */}
+        <Route path="/headclerk/summer-winter-management" element={
           <AppLayout>
             <RequireAuth>
               <RequireRole roles={["headclerk"]}>

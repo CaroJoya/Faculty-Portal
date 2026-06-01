@@ -284,7 +284,7 @@ router.get("/headclerk/vacation/faculty-status", authenticateToken, authorizeRol
   }
 });
 
-// 7) GET /api/headclerk/vacation/calendar
+// 7) GET /api/headclerk/vacation/calendar - FIXED: NOW INCLUDES duration_days
 router.get("/headclerk/vacation/calendar", authenticateToken, authorizeRoles("headclerk"), (req, res) => {
   try {
     const hc = ensureHeadClerk(req, res);
@@ -295,8 +295,18 @@ router.get("/headclerk/vacation/calendar", authenticateToken, authorizeRoles("he
 
     const { start, end } = monthRange(Number(year), Number(month));
 
+    // FIXED: Added COALESCE(lr.duration_days, 0) AS duration_days to the SELECT clause
     const rows = db.prepare(`
-      SELECT lr.id, lr.user_username, lr.start_date, lr.end_date, lr.reason, lr.special_leave_type, u.full_name, u.department
+      SELECT 
+        lr.id, 
+        lr.user_username, 
+        lr.start_date, 
+        lr.end_date, 
+        lr.reason, 
+        lr.special_leave_type, 
+        u.full_name, 
+        u.department,
+        COALESCE(lr.duration_days, 0) AS duration_days
       FROM leave_requests lr
       JOIN users u ON u.username = lr.user_username
       WHERE lr.status = 'Approved'

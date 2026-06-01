@@ -22,7 +22,7 @@ export default function HODFacultyRequests() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0, cancelled: 0 });
 
   useEffect(() => {
     loadRequests();
@@ -41,16 +41,19 @@ export default function HODFacultyRequests() {
 
       const normalized = (res.data || []).map(r => ({
         ...r,
-        statusLower: String(r.status || "").toLowerCase()
+        statusLower: String(r.status || "").toLowerCase(),
+        isCancelled: !!r.cancelled_at,
+        displayStatus: r.cancelled_at ? "Cancelled" : r.status
       }));
 
       setRequests(normalized);
       
-      // Calculate stats (use normalized status)
-      const pending = normalized.filter(r => r.statusLower === "pending").length;
-      const approved = normalized.filter(r => r.statusLower === "approved").length;
-      const rejected = normalized.filter(r => r.statusLower === "rejected").length;
-      setStats({ pending, approved, rejected });
+      // Calculate stats
+      const pending = normalized.filter(r => !r.isCancelled && r.statusLower === "pending").length;
+      const approved = normalized.filter(r => !r.isCancelled && r.statusLower === "approved").length;
+      const rejected = normalized.filter(r => !r.isCancelled && r.statusLower === "rejected").length;
+      const cancelled = normalized.filter(r => r.isCancelled).length;
+      setStats({ pending, approved, rejected, cancelled });
     } catch (err) {
       console.error("Failed to load requests", err);
     } finally {
@@ -62,7 +65,11 @@ export default function HODFacultyRequests() {
     let filtered = [...requests];
     
     if (statusFilter !== "all") {
-      filtered = filtered.filter(r => r.statusLower === statusFilter);
+      if (statusFilter === "cancelled") {
+        filtered = filtered.filter(r => r.isCancelled);
+      } else {
+        filtered = filtered.filter(r => !r.isCancelled && r.statusLower === statusFilter);
+      }
     }
     
     if (searchTerm) {
@@ -74,14 +81,24 @@ export default function HODFacultyRequests() {
       );
     }
     
+    // Sort: cancelled requests at the bottom
+    filtered.sort((a, b) => {
+      if (a.isCancelled && !b.isCancelled) return 1;
+      if (!a.isCancelled && b.isCancelled) return -1;
+      return 0;
+    });
+    
     setFilteredRequests(filtered);
   };
 
-  // Updated to call the new backend endpoints for HOD approval/rejection
-  const updateStatus = async (id, status) => {
+  const updateStatus = async (id, status, isCancelled) => {
+    if (isCancelled) {
+      alert("Cannot approve/reject a cancelled request");
+      return;
+    }
+    
     try {
       if (status === "approved") {
-        // optional comments can be asked here
         const comments = window.prompt("Any remarks (optional):", "") || "";
         await axios.post(`${API}/hod/forward-to-principal/${id}`, 
           { hod_comments: comments },
@@ -125,10 +142,11 @@ export default function HODFacultyRequests() {
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatSummary label="Pending" count={stats.pending} color="amber" />
         <StatSummary label="Approved" count={stats.approved} color="emerald" />
         <StatSummary label="Rejected" count={stats.rejected} color="rose" />
+        <StatSummary label="Cancelled" count={stats.cancelled} color="gray" />
       </div>
 
       {/* Filters */}
@@ -144,8 +162,8 @@ export default function HODFacultyRequests() {
               className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-400 outline-none"
             />
           </div>
-          <div className="flex gap-2">
-            {["all", "pending", "approved", "rejected"].map((status) => (
+          <div className="flex gap-2 flex-wrap">
+            {["all", "pending", "approved", "rejected", "cancelled"].map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -179,9 +197,11 @@ export default function HODFacultyRequests() {
           <tbody>
             {filteredRequests.length > 0 ? (
               filteredRequests.map((req) => (
-                <tr key={req.id} className="border-b hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors">
+                <tr key={req.id} className={`border-b hover:bg-slate-50 dark:hover:bg-gray-900/30 transition-colors ${req.isCancelled ? "opacity-70 bg-gray-50 dark:bg-gray-900/20" : ""}`}>
                   <td className="px-6 py-4">
-                    <p className="font-medium text-slate-800 dark:text-white">{req.full_name}</p>
+                    <p className={`font-medium ${req.isCancelled ? "text-slate-500 dark:text-slate-400 line-through" : "text-slate-800 dark:text-white"}`}>
+                      {req.full_name}
+                    </p>
                     <p className="text-xs text-slate-400">{req.email}</p>
                   </td>
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{req.department}</td>
@@ -195,7 +215,13 @@ export default function HODFacultyRequests() {
                   </td>
                   <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">{req.duration_days || "-"}</td>
                   <td className="px-6 py-4">
-                    <StatusBadge status={req.statusLower || "pending"} />
+                    {req.isCancelled ? (
+                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                        Cancelled
+                      </span>
+                    ) : (
+                      <StatusBadge status={req.statusLower || "pending"} />
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
@@ -205,17 +231,17 @@ export default function HODFacultyRequests() {
                       >
                         <Eye size={18} />
                       </Link>
-                      {req.statusLower === "pending" && (
+                      {!req.isCancelled && req.statusLower === "pending" && (
                         <>
                           <button
-                            onClick={() => updateStatus(req.id, "approved")}
+                            onClick={() => updateStatus(req.id, "approved", req.isCancelled)}
                             className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
                             title="Approve"
                           >
                             <CheckCircle size={18} />
                           </button>
                           <button
-                            onClick={() => updateStatus(req.id, "rejected")}
+                            onClick={() => updateStatus(req.id, "rejected", req.isCancelled)}
                             className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                             title="Reject"
                           >
@@ -245,7 +271,8 @@ function StatSummary({ label, count, color }) {
   const colors = {
     amber: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
     emerald: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
-    rose: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400"
+    rose: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400",
+    gray: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
   };
   
   return (
